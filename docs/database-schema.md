@@ -1,0 +1,67 @@
+# SQLite catalog schema
+
+Discord stores the original attachments. SQLite stores names, search keys, category mappings,
+editable tags and Discord identifiers. The schema is defined and migrated in
+`src/meme_manager/catalog.py`; no external database is required.
+
+| Table | Key | Purpose |
+| --- | --- | --- |
+| `meme_settings` | `guild_id` | Saved ID of the bot-managed Memes group (`category_id`) |
+| `meme_channels` | `(guild_id, name)` | Requested category name mapped to its Discord text channel ID |
+| `memes` | `id`, unique `attachment_id` | One record per original attachment |
+
+A business category such as `reaction` is a Discord text channel. The enclosing Discord
+Category named Memes is the library container. These are different identifiers.
+
+`memes.channel_id` identifies the business category, scoped by `guild_id`. `meme_channels`
+remembers requested names so renamed channels can still be reopened by the original command.
+Manually added channels may have indexed attachments without a requested-name mapping.
+These are logical relationships; they are not enforced with foreign keys because source
+channels can be renamed, moved, or deleted independently in Discord.
+
+| Meme field | Meaning |
+| --- | --- |
+| `id` | Local meme ID shown by the picker and used for edit/remove |
+| `title` | Display name; initially derived from the filename, editable |
+| `name_index` | Normalized title: lowercase, accent-insensitive, punctuation/spacing normalized |
+| `filename` | Original Discord attachment filename |
+| `tags` | User-editable tags |
+| `message_text` | Original caption, bounded to 1000 characters |
+| `search_text` | Normalized title + tags + caption + channel name |
+| `guild_id`, `channel_id` | Source server and category channel |
+| `channel_name` | Source channel name snapshot, refreshed on reimport |
+| `message_id`, `attachment_id` | Stable references used to refetch the original attachment |
+| `author_id` | Original author; edit/remove authorization uses this ID |
+| `media_kind`, `content_type`, `file_size` | Image/video classification and attachment metadata |
+
+Titles do not need to be unique. `name_index` is a search key, not a second ID or a filename.
+For example, `Mèo Hết Cứu!` has the key `meo het cuu`. Creating or editing a meme maintains
+this value. Reimport preserves edited names and tags.
+
+| Index | Supports |
+| --- | --- |
+| Primary key `memes.id` | Get/edit/remove by local meme ID |
+| Unique `memes.attachment_id` | Idempotent attachment ingestion |
+| `idx_memes_guild_id (guild_id, id DESC)` | Recent memes within the server |
+| `idx_memes_guild_name (guild_id, name_index, id DESC)` | Exact normalized name lookup within the server |
+| `idx_memes_guild_channel (guild_id, channel_id, id DESC)` | Recent/search results filtered by category |
+| `idx_memes_source_message (guild_id, channel_id, message_id)` | Remove attachments when the source message is deleted |
+| Primary key `meme_channels (guild_id, name)` | Reopen a category by requested name |
+| `idx_meme_channels_discord (guild_id, channel_id)` | Inspect requested category names for a Discord channel |
+
+`/meme search` still matches words anywhere in `search_text` using parameterized `LIKE`.
+A name B-tree index does not accelerate arbitrary substring matches. The optional `category`
+filter narrows those matches using the category index. The name index supports exact-name SQL
+lookups; do not treat the current search as full-text or semantic search.
+
+```sql
+SELECT id, title, channel_name
+FROM memes
+WHERE guild_id = :guild_id AND name_index = :normalized_name
+ORDER BY id DESC;
+```
+
+On startup, existing databases gain missing columns and indexes. Existing titles backfill
+`name_index`; attachment IDs, names, tags and managed channel mappings remain intact. Repeated
+startup is safe. The old message-only index is replaced by the scoped source-message index.
+Back up the SQLite database before upgrades; do not edit derived search keys manually.
