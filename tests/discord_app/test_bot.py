@@ -2,24 +2,23 @@
 
 import asyncio
 from collections.abc import AsyncIterator
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import discord
 import pytest
 
-from meme_manager.bot import MemeBot
-from meme_manager.catalog import MemeCatalog
 from meme_manager.config import Settings
+from meme_manager.discord_app.bot import MemeBot
+from meme_manager.persistence.catalog import MemeCatalog
+from meme_manager.persistence.channels import ChannelRegistry
+from meme_manager.persistence.database import SQLiteDatabase
 
 
 @pytest.fixture
-def bot(tmp_path: Path) -> MemeBot:
-    catalog = MemeCatalog(tmp_path / "catalog.sqlite3")
-    catalog.initialize()
-    catalog.set_meme_category_id(1, 20)
-    return MemeBot(Settings("test-token", 1, tmp_path / "catalog.sqlite3"), catalog)
+def bot(database: SQLiteDatabase, catalog: MemeCatalog, channels: ChannelRegistry) -> MemeBot:
+    channels.set_meme_category_id(1, 20)
+    return MemeBot(Settings("test-token", 1, database.path), catalog, channels)
 
 
 def channel(channel_id: int = 2, category_id: int | None = 20) -> Mock:
@@ -124,7 +123,7 @@ def test_import_reads_all_text_channels_and_continues_after_permission_failure(
     category = Mock(spec=discord.CategoryChannel)
     category.id = 20
     category.guild = SimpleNamespace(id=1)
-    bot.ensure_meme_category = AsyncMock(return_value=category)
+    bot.categories.ensure_group = AsyncMock(return_value=category)
     request = interaction()
     request.guild.fetch_channels = AsyncMock(return_value=sources)
     run_import(bot, request, 5000)
@@ -136,27 +135,27 @@ def test_import_reads_all_text_channels_and_continues_after_permission_failure(
 
 
 def test_import_requires_manager(bot: MemeBot) -> None:
-    bot.get_channel = Mock()
+    bot.categories.ensure_group = AsyncMock()
     request = interaction(manager=False)
     run_import(bot, request)
-    bot.get_channel.assert_not_called()
+    bot.categories.ensure_group.assert_not_awaited()
     request.response.send_message.assert_awaited_once()
 
 
 @pytest.mark.parametrize("guild_id", [None, 9])
 def test_import_rejects_dm_or_wrong_guild(bot: MemeBot, guild_id: int | None) -> None:
-    bot.ensure_meme_category = AsyncMock()
+    bot.categories.ensure_group = AsyncMock()
     request = interaction()
     request.guild = None if guild_id is None else SimpleNamespace(id=guild_id)
     run_import(bot, request)
-    bot.ensure_meme_category.assert_not_awaited()
+    bot.categories.ensure_group.assert_not_awaited()
     assert "server đã cấu hình" in request.response.send_message.call_args.args[0]
 
 
 def test_import_empty_category(bot: MemeBot) -> None:
     category = Mock(spec=discord.CategoryChannel)
     category.id = 20
-    bot.ensure_meme_category = AsyncMock(return_value=category)
+    bot.categories.ensure_group = AsyncMock(return_value=category)
     request = interaction()
     request.guild.fetch_channels = AsyncMock(return_value=[])
     run_import(bot, request)
@@ -164,20 +163,22 @@ def test_import_empty_category(bot: MemeBot) -> None:
 
 
 def test_no_indexing_until_meme_group_is_registered(bot: MemeBot) -> None:
-    bot.catalog = MemeCatalog(bot.settings.database_path.parent / "empty.sqlite3")
-    bot.catalog.initialize()
+    database = SQLiteDatabase(bot.settings.database_path.parent / "empty.sqlite3")
+    database.initialize()
+    bot.catalog = MemeCatalog(database)
+    bot.channels = ChannelRegistry(database)
     assert bot.index_message(message(channel(category_id=None))) == 0
     assert bot.index_message(message(channel())) == 0
 
 
 def test_search_and_list_pass_selected_category_to_catalog(bot: MemeBot) -> None:
-    from unittest.mock import patch
-
     bot.index_message(message(channel(2)))
     bot.index_message(message(channel(5)))
     group = bot.tree.get_command("meme", guild=bot.guild)
     request = interaction()
-    with patch("meme_manager.commands._show_picker", new_callable=AsyncMock) as picker:
+    with patch(
+        "meme_manager.discord_app.commands.browse.show_picker", new_callable=AsyncMock
+    ) as picker:
         asyncio.run(group.get_command("search").callback(request, "meo khoc", channel(5)))
         assert [m.channel_id for m in picker.call_args.args[2]] == [5]
         asyncio.run(group.get_command("list").callback(request, channel(2)))

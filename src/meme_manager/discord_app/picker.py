@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from meme_manager.models import Meme
+from meme_manager.domain.models import Meme
 
 if TYPE_CHECKING:
-    from meme_manager.bot import MemeBot
+    from meme_manager.discord_app.media import MemeMedia
 
 PAGE_SIZE = 5
 DEFAULT_PREVIEW_LIMIT = 10 * 1024 * 1024
@@ -41,9 +41,9 @@ class MemeOption(discord.ui.Select["MemePicker"]):
 class MemePicker(discord.ui.View):
     """Discord-native picker: select, previous/next and send to current channel."""
 
-    def __init__(self, bot: MemeBot, memes: list[Meme], requester_id: int) -> None:
+    def __init__(self, media: MemeMedia, memes: list[Meme], requester_id: int) -> None:
         super().__init__(timeout=180)
-        self.bot = bot
+        self.media = media
         self.memes = memes
         self.requester_id = requester_id
         self._preview_lock = asyncio.Lock()
@@ -99,7 +99,7 @@ class MemePicker(discord.ui.View):
             ),
         )
         embed.set_footer(text=f"Trang {self.page + 1}/{(len(self.memes) - 1) // PAGE_SIZE + 1}")
-        attachment = await self.bot.get_attachment(meme)
+        attachment = await self.media.get_attachment(meme)
         if attachment is None:
             embed.add_field(name="Lưu ý", value="File gốc đã mất hoặc bot thiếu quyền đọc.")
             return embed, []
@@ -147,4 +147,4 @@ class MemePicker(discord.ui.View):
         self, interaction: discord.Interaction, _: discord.ui.Button[MemePicker]
     ) -> None:
         meme = next(item for item in self.memes if item.id == self.selected_id)
-        await self.bot.send_meme(interaction, meme)
+        await self.media.send_meme(interaction, meme)

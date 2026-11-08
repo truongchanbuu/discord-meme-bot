@@ -1,24 +1,17 @@
 """Bot-managed Discord channels are persisted, recoverable, and manager-only."""
 
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import discord
 import pytest
 
-from meme_manager.bot import MemeBot
-from meme_manager.catalog import MemeCatalog
-from meme_manager.config import Settings
-from meme_manager.text import meme_channel_name
-
-
-@pytest.fixture
-def bot(tmp_path: Path) -> MemeBot:
-    catalog = MemeCatalog(tmp_path / "catalog.sqlite3")
-    catalog.initialize()
-    return MemeBot(Settings("test-token", 1, catalog.database_path), catalog)
+from meme_manager.discord_app.bot import MemeBot
+from meme_manager.domain.text import meme_channel_name
+from meme_manager.persistence.catalog import MemeCatalog
+from meme_manager.persistence.channels import ChannelRegistry
+from meme_manager.persistence.database import SQLiteDatabase
 
 
 def category(category_id: int = 20, name: str = "Memes") -> Mock:
@@ -62,16 +55,16 @@ def guild(channels: list[Mock]) -> Mock:
 
 def test_creates_group_and_channel_and_reuses_after_restart(bot: MemeBot) -> None:
     server = guild([])
-    created = asyncio.run(bot.create_meme_channel(server, "Reaction"))
+    created = asyncio.run(bot.categories.create_channel(server, "Reaction"))
     assert created.name == "reaction"
-    assert bot.catalog.get_meme_category_id(1) == 20
-    assert bot.catalog.get_meme_channel_id(1, "reaction") == 30
-    assert bot.catalog.get_meme_category_id(9) is None
-    assert bot.catalog.get_meme_channel_id(9, "reaction") is None
-    reopened = MemeCatalog(bot.settings.database_path)
+    assert bot.channels.get_meme_category_id(1) == 20
+    assert bot.channels.get_meme_channel_id(1, "reaction") == 30
+    assert bot.channels.get_meme_category_id(9) is None
+    assert bot.channels.get_meme_channel_id(9, "reaction") is None
+    reopened = SQLiteDatabase(bot.settings.database_path)
     reopened.initialize()
-    restarted = MemeBot(bot.settings, reopened)
-    assert asyncio.run(restarted.create_meme_channel(server, "Reaction")) is created
+    restarted = MemeBot(bot.settings, MemeCatalog(reopened), ChannelRegistry(reopened))
+    assert asyncio.run(restarted.categories.create_channel(server, "Reaction")) is created
     server.create_category.assert_awaited_once()
     server.create_text_channel.assert_awaited_once()
     assert server.create_text_channel.call_args.kwargs["category"].id == 20
@@ -79,11 +72,11 @@ def test_creates_group_and_channel_and_reuses_after_restart(bot: MemeBot) -> Non
 
 def test_each_new_meme_category_gets_its_own_channel(bot: MemeBot) -> None:
     server = guild([])
-    reaction = asyncio.run(bot.create_meme_channel(server, "reaction"))
-    cat = asyncio.run(bot.create_meme_channel(server, "Mèo Khóc"))
+    reaction = asyncio.run(bot.categories.create_channel(server, "reaction"))
+    cat = asyncio.run(bot.categories.create_channel(server, "Mèo Khóc"))
     assert reaction.id != cat.id
-    assert bot.catalog.get_meme_channel_id(1, "reaction") == reaction.id
-    assert bot.catalog.get_meme_channel_id(1, "meo-khoc") == cat.id
+    assert bot.channels.get_meme_channel_id(1, "reaction") == reaction.id
+    assert bot.channels.get_meme_channel_id(1, "meo-khoc") == cat.id
     server.create_category.assert_awaited_once()
     assert server.create_text_channel.await_count == 2
 
@@ -92,31 +85,31 @@ def test_recovers_existing_group_and_child_by_name(bot: MemeBot) -> None:
     group = category()
     child = text_channel()
     server = guild([group, child])
-    assert asyncio.run(bot.create_meme_channel(server, "reaction")) is child
+    assert asyncio.run(bot.categories.create_channel(server, "reaction")) is child
     server.create_category.assert_not_awaited()
     server.create_text_channel.assert_not_awaited()
-    assert bot.catalog.get_meme_category_id(1) == group.id
-    assert bot.catalog.get_meme_channel_id(1, "reaction") == child.id
+    assert bot.channels.get_meme_category_id(1) == group.id
+    assert bot.channels.get_meme_channel_id(1, "reaction") == child.id
 
 
 def test_reuses_saved_ids_after_discord_rename(bot: MemeBot) -> None:
-    bot.catalog.set_meme_category_id(1, 20)
-    bot.catalog.set_meme_channel_id(1, "reaction", 30)
+    bot.channels.set_meme_category_id(1, 20)
+    bot.channels.set_meme_channel_id(1, "reaction", 30)
     group = category(name="Renamed group")
     child = text_channel(name="renamed-channel")
     server = guild([group, child])
-    assert asyncio.run(bot.create_meme_channel(server, "reaction")) is child
+    assert asyncio.run(bot.categories.create_channel(server, "reaction")) is child
     server.create_category.assert_not_awaited()
     server.create_text_channel.assert_not_awaited()
 
 
 def test_recreates_deleted_group_and_child(bot: MemeBot) -> None:
-    bot.catalog.set_meme_category_id(1, 999)
-    bot.catalog.set_meme_channel_id(1, "reaction", 998)
+    bot.channels.set_meme_category_id(1, 999)
+    bot.channels.set_meme_channel_id(1, "reaction", 998)
     server = guild([])
-    asyncio.run(bot.create_meme_channel(server, "reaction"))
-    assert bot.catalog.get_meme_category_id(1) == 20
-    assert bot.catalog.get_meme_channel_id(1, "reaction") == 30
+    asyncio.run(bot.categories.create_channel(server, "reaction"))
+    assert bot.channels.get_meme_category_id(1) == 20
+    assert bot.channels.get_meme_channel_id(1, "reaction") == 30
 
 
 def test_concurrent_creates_do_not_duplicate_channels(bot: MemeBot) -> None:
@@ -124,8 +117,8 @@ def test_concurrent_creates_do_not_duplicate_channels(bot: MemeBot) -> None:
 
     async def create_twice() -> list[discord.TextChannel]:
         return await asyncio.gather(
-            bot.create_meme_channel(server, "Reaction"),
-            bot.create_meme_channel(server, "reaction"),
+            bot.categories.create_channel(server, "Reaction"),
+            bot.categories.create_channel(server, "reaction"),
         )
 
     first, second = asyncio.run(create_twice())
@@ -138,16 +131,16 @@ def test_group_in_other_guild_is_rejected_before_api_call(bot: MemeBot) -> None:
     server = guild([])
     server.id = 9
     with pytest.raises(ValueError, match="server đã cấu hình"):
-        asyncio.run(bot.create_meme_channel(server, "reaction"))
+        asyncio.run(bot.categories.create_channel(server, "reaction"))
     server.fetch_channels.assert_not_awaited()
 
 
 def test_moved_saved_channel_is_not_duplicated_or_moved_back(bot: MemeBot) -> None:
-    bot.catalog.set_meme_category_id(1, 20)
-    bot.catalog.set_meme_channel_id(1, "reaction", 30)
+    bot.channels.set_meme_category_id(1, 20)
+    bot.channels.set_meme_channel_id(1, "reaction", 30)
     server = guild([category(), text_channel(parent_id=99)])
     with pytest.raises(ValueError, match="nằm ngoài"):
-        asyncio.run(bot.create_meme_channel(server, "reaction"))
+        asyncio.run(bot.categories.create_channel(server, "reaction"))
     server.create_text_channel.assert_not_awaited()
 
 
@@ -158,14 +151,14 @@ def test_ambiguous_names_require_resolution(bot: MemeBot, children: bool) -> Non
     )
     server = guild(channels)
     with pytest.raises(ValueError, match="nhiều"):
-        asyncio.run(bot.create_meme_channel(server, "reaction"))
+        asyncio.run(bot.categories.create_channel(server, "reaction"))
     server.create_category.assert_not_awaited()
     server.create_text_channel.assert_not_awaited()
 
 
 def test_existing_same_name_outside_group_is_not_adopted(bot: MemeBot) -> None:
     server = guild([category(), text_channel(40, parent_id=99)])
-    created = asyncio.run(bot.create_meme_channel(server, "reaction"))
+    created = asyncio.run(bot.categories.create_channel(server, "reaction"))
     assert created.id != 40
     assert created.category_id == 20
     server.create_text_channel.assert_awaited_once()
@@ -175,7 +168,7 @@ def test_existing_same_name_outside_group_is_not_adopted(bot: MemeBot) -> None:
 def test_invalid_names_are_rejected_before_api_call(bot: MemeBot, value: str) -> None:
     server = guild([])
     with pytest.raises(ValueError, match="Tên category"):
-        asyncio.run(bot.create_meme_channel(server, value))
+        asyncio.run(bot.categories.create_channel(server, value))
     server.fetch_channels.assert_not_awaited()
 
 
@@ -202,16 +195,16 @@ def run_create(bot: MemeBot, interaction: Mock, name: str = "reaction") -> None:
 def test_command_denies_unprivileged_or_wrong_guild(
     bot: MemeBot, manager: bool, guild_id: int | None
 ) -> None:
-    bot.create_meme_channel = AsyncMock()
+    bot.categories.create_channel = AsyncMock()
     interaction = request(manager, guild_id)
     run_create(bot, interaction)
-    bot.create_meme_channel.assert_not_awaited()
+    bot.categories.create_channel.assert_not_awaited()
     interaction.response.send_message.assert_awaited_once()
     assert interaction.response.send_message.call_args.kwargs["ephemeral"]
 
 
 def test_command_returns_ephemeral_channel_link(bot: MemeBot) -> None:
-    bot.create_meme_channel = AsyncMock(return_value=text_channel())
+    bot.categories.create_channel = AsyncMock(return_value=text_channel())
     interaction = request()
     run_create(bot, interaction)
     interaction.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
@@ -221,7 +214,7 @@ def test_command_returns_ephemeral_channel_link(bot: MemeBot) -> None:
 
 def test_command_reports_missing_bot_permissions(bot: MemeBot) -> None:
     error = discord.Forbidden(SimpleNamespace(status=403, reason="Forbidden"), "No access")
-    bot.create_meme_channel = AsyncMock(side_effect=error)
+    bot.categories.create_channel = AsyncMock(side_effect=error)
     interaction = request()
     run_create(bot, interaction)
     assert "Manage Channels" in interaction.followup.send.call_args.args[0]
@@ -239,9 +232,9 @@ def test_permission_failure_does_not_persist_group_or_create_child(bot: MemeBot)
         SimpleNamespace(status=403, reason="Forbidden"), "No access"
     )
     with pytest.raises(discord.Forbidden):
-        asyncio.run(bot.create_meme_channel(server, "reaction"))
-    assert bot.catalog.get_meme_category_id(1) is None
-    assert bot.catalog.get_meme_channel_id(1, "reaction") is None
+        asyncio.run(bot.categories.create_channel(server, "reaction"))
+    assert bot.channels.get_meme_category_id(1) is None
+    assert bot.channels.get_meme_channel_id(1, "reaction") is None
     server.create_text_channel.assert_not_awaited()
 
 
@@ -251,7 +244,7 @@ def test_startup_is_idempotent_and_creates_group(bot: MemeBot) -> None:
     asyncio.run(bot.on_ready())
     asyncio.run(bot.on_ready())
     server.create_category.assert_awaited_once()
-    assert bot.catalog.get_meme_category_id(1) == 20
+    assert bot.channels.get_meme_category_id(1) == 20
 
 
 def test_startup_permission_failure_is_logged(
@@ -264,4 +257,4 @@ def test_startup_permission_failure_is_logged(
     bot.get_guild = Mock(return_value=server)
     asyncio.run(bot.on_ready())
     assert "Could not prepare Memes" in caplog.text
-    assert bot.catalog.get_meme_category_id(1) is None
+    assert bot.channels.get_meme_category_id(1) is None

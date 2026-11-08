@@ -68,6 +68,16 @@ Channel names become searchable categories without replacing editable tags. Exis
 
 See [the SQLite schema](docs/database-schema.md) for stored fields, category mappings, normalized names, indexes and migration behavior.
 
+## Code organization
+
+- `domain/`: plain records, validation and repository contracts.
+- `persistence/`: SQLite connections, migrations and focused repositories.
+- `discord_app/`: gateway, category/media adapters, picker and commands grouped by task.
+- `app.py`: constructs the production dependencies and starts the bot.
+
+See [architecture](docs/architecture.md) for the dependency rules and directory map.
+Tests follow the same layers and use isolated SQLite databases without Discord credentials.
+
 ## Development
 
 ```bash

@@ -1,55 +1,106 @@
-# Architecture — intentionally small
+# Architecture
+
+One Python bot serves one Discord server. Original uploads stay in Discord; SQLite stores
+metadata and stable source identifiers. All user interaction uses native slash commands,
+private previews, selects and buttons.
 
 ```text
-Discord Server
-  Meme category / text channels --message create/delete--> MemeBot.on_message/on_raw_message_delete
-                                          |  index references
-                                          v
-                                     MemeCatalog (SQLite)
-                                          ^
-  /meme search/list/random/edit/remove ---|
-          |
-          v
-    MemePicker (Select, Buttons, Embed)
-          |
-    Send to channel -> re-fetch original Discord message attachment -> upload to chat
+src/meme_manager/
+├── app.py                      # Startup and production dependency wiring
+├── config.py                   # Environment validation
+├── domain/
+│   ├── models.py               # Plain meme input/result records
+│   ├── text.py                 # Name normalization and search text rules
+│   ├── media.py                # Supported media validation
+│   └── repositories.py         # Separate meme/channel storage protocols
+├── persistence/
+│   ├── database.py             # Connections, transactions and initialization
+│   ├── schema.py               # SQLite schema and additive migrations
+│   ├── catalog.py              # Meme queries, edits and indexing
+│   └── channels.py             # Managed group/channel mappings
+└── discord_app/
+    ├── bot.py                  # Gateway events and command synchronization
+    ├── categories.py           # Create/recover the Memes group and channels
+    ├── media.py                # Retrieve and resend original attachments
+    ├── picker.py               # Private media preview and result navigation
+    └── commands/
+        ├── __init__.py         # Assemble the guild's command group
+        ├── browse.py           # Search, list and random
+        ├── categories.py       # Create categories and import history
+        ├── manage.py           # Edit tags/names and remove catalog entries
+        └── permissions.py     # Author/server-manager authorization
 ```
 
-## Boundaries
+Tests mirror these responsibilities under `tests/domain`, `tests/persistence` and
+`tests/discord_app`; `tests/conftest.py` supplies isolated databases and repository wiring.
 
-- `bot.py` handles Discord gateway events, managed group/channel creation and attachment resending. Separate asyncio locks serialize group setup and channel creation within the single bot process.
-- `commands.py` registers slash commands, checks editing permissions and restricts category creation/import to server managers in the configured guild.
-- `views.py` renders native Discord select menus, preview embeds, and buttons.
-- `catalog.py` owns indexing, querying, tag edits, deletion and SQLite schema.
-- `models.py`, `text.py`, `media.py` are SDK-agnostic pure data/validation helpers.
-- `config.py` loads token, guild ID, and DB path; Discord IDs are managed in SQLite.
+```mermaid
+flowchart LR
+    App[app.py] --> Bot[Discord gateway]
+    App --> SQL[SQLite repositories]
+    Bot --> Commands[Slash commands]
+    Commands --> Picker[Private picker]
+    Commands --> Categories[Category manager]
+    Picker --> Media[Discord media adapter]
+    Bot --> Contracts[Domain repository protocols]
+    Commands --> Contracts
+    Categories --> Contracts
+    SQL -. implements .-> Contracts
+    SQL --> DB[(SQLite metadata)]
+    Media --> Discord[(Discord attachments)]
+```
 
-No service registry, generic repository framework, DI container, message broker, worker, Redis, or external database. Add components only when a measured requirement demands them.
+## Responsibility and dependency rules
+
+- Domain records, validation and protocols import neither Discord nor SQLite.
+- `MemeRepository` and `ChannelRepository` are separate, small typed contracts. Gateway and
+  category logic receive those contracts; SQLite implementations are selected in `app.py`.
+- Repositories contain SQL only. They share a database object that commits successful work,
+  rolls back exceptions and closes every owned connection. Schema migration has its own module.
+- `MemeBot` owns gateway behavior. `CategoryManager` owns Discord channel lifecycle; `MemeMedia`
+  owns attachment retrieval and sending. The picker depends on media operations, not the bot.
+- Command registration is grouped by user task. Shared authorization remains in one module.
+- Composition replaces application inheritance; only Discord SDK extension points are subclassed.
+  There is no DI container, generic base repository, plugin framework or web backend.
 
 ## Category lifecycle
 
-- On ready, the bot fetches guild channels, restores the group saved in `meme_settings`, or reuses a unique category named `Memes`. Otherwise it creates Memes and saves its ID.
-- `/meme category create name:...` normalizes the name, checks `meme_channels`, and reuses or creates a text channel under that group. IDs are saved only after successful Discord operations. Fresh channel lists avoid depending on gateway cache timing after creation.
-- Saved IDs survive Discord renames. A deleted resource is recovered on the next setup/create call; ambiguous names and moved children report an error instead of changing unrelated channels.
-- `meme_settings` and `meme_channels` are guild-scoped SQLite tables. The schema is created on startup alongside the existing catalog. Token, guild ID and database path are the only environment settings.
+On ready, the bot fetches guild channels and restores the group saved in `meme_settings`.
+If necessary, it reuses a unique category named **Memes** or creates one and saves its ID.
+`/meme category create name:...` normalizes the requested name, checks `meme_channels`, then
+reuses or creates a text channel under that group. Separate locks serialize group setup and
+channel creation inside the single bot process. Fresh channel lists avoid relying on gateway
+cache timing after creation. IDs are saved only after successful Discord operations.
 
-## Data invariants
+Saved IDs survive Discord renames. Deleted resources are recovered on the next setup/create
+call. Ambiguous names and moved children return an error without moving unrelated channels.
+Only direct text channels under Memes receive new entries; threads, forums, bot-authored
+messages, DMs and other guilds are excluded. Import requires Manage Server.
 
-- `memes.title` is the display name; `name_index` is its normalized search key. Edits maintain both. See [database schema](database-schema.md) for fields and indexes.
-- Category-filtered list/search uses `channel_id` and always retains the configured guild boundary.
-- One row per `attachment_id` (idempotent indexing). Reimport refreshes the searchable channel name and preserves edited titles/tags.
-- Only direct text channels in the managed category receive new entries; threads and forums are excluded.
-- Channel names are stored as metadata for category search; existing databases migrate on startup.
-- Guild-bound queries and mutating commands.
-- An attachment is referenced by original `guild_id/channel_id/message_id/attachment_id`.
-- A signed CDN URL is **never stored** in SQLite.
-- Deleting original message clears indexed rows when the bot sees its deletion event; outages may leave stale records, so a future reconciliation command can clean them.
-- Removing an index entry does not delete original messages.
-- The current bot does not hash bytes, OCR, transcode media, or search videos by content.
+## Catalog and privacy invariants
 
-## Decisions and limitations
+- One row per attachment ID; reimport refreshes the channel name and preserves edited titles/tags.
+- Display names and normalized `name_index` values are maintained together. Category-filtered
+  search/list always retain the configured guild boundary. See [database schema](database-schema.md).
+- Original guild/channel/message/attachment IDs identify media. Signed CDN URLs are refreshed
+  from Discord and are never persisted in SQLite. No media bytes are stored in the database.
+- Deletion events remove the source's indexed rows, even after its channel moves. Offline
+  deletions can leave stale records, which show a missing-media warning when accessed.
+- Removing an index entry does not delete the original Discord message.
 
-1. SQLite + `sqlite3`: sufficient for one modest personal bot. Most operations are tiny, synchronous metadata queries; revisit event-loop blocking if usage grows.
-2. Discord attachments: lowest setup friction, but **not an archival guarantee**. Retain external backups for anything irreplaceable.
-3. Native Discord UI: a select menu of 5 results per page, preview embed, and Send button. Images/GIFs use a fresh attachment URL in the embed. Videos are reattached to the ephemeral response for native Discord playback, within the effective interaction upload limit. Every preview replaces the previous attachments; missing/oversized/download-failed media has a source link. A per-picker lock serializes rendering so slow downloads cannot overwrite newer selections.
-4. One guild: prevents accidental cross-server access and simplifies authorization. Multi-server/user-install is a separate feature.
+## Preview and sharing
+
+Five results appear per page. Images/GIFs use freshly fetched URLs in the preview embed.
+Videos are attached to the private response, within the effective interaction upload limit,
+for native Discord playback. Selection changes replace previous attachments. A per-picker
+lock serializes rendering so a slow download cannot overwrite a newer selection.
+Unavailable/oversized media keeps a source link. Only **Send to channel** shares media publicly.
+Playback depends on Discord/client codec support.
+
+## Operational limits
+
+Run one bot process per SQLite database. SQLite operations are small synchronous queries;
+revisit event-loop blocking only if measured usage requires it. Discord attachments are not
+an archival guarantee: retain backups of important files and the metadata database.
+No hashing, OCR, transcoding or semantic search is implemented. Multiple servers would require
+a separate product decision and authorization review.

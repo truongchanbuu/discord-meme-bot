@@ -1,5 +1,5 @@
-from meme_manager.media import media_kind
-from meme_manager.text import default_title, normalize
+from meme_manager.domain.media import media_kind
+from meme_manager.domain.text import default_title, normalize
 
 
 def test_supported_media():

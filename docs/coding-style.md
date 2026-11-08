@@ -10,7 +10,7 @@
 
 ## Functions
 
-- Names should make behavior obvious: `remove_message`, `get_attachment`, `preview_embed`.
+- Names should make behavior obvious: `remove_message`, `get_attachment`, `show_preview`.
 - Prefer early return over pyramids of nested `if` blocks.
 - One conceptual responsibility per function. A function should be understandable without reading hidden state elsewhere.
 - Keep parameters few and cohesive. Use a dataclass for a cohesive group, not a large positional argument list.

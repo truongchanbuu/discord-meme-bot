@@ -2,12 +2,12 @@
 
 import sqlite3
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
-from meme_manager.catalog import MemeCatalog
-from meme_manager.models import MemeInput
+from meme_manager.domain.models import MemeInput
+from meme_manager.persistence.catalog import MemeCatalog
+from meme_manager.persistence.channels import ChannelRegistry
 
 
 def input_file(
@@ -24,13 +24,6 @@ def input_file(
         file_size=1000,
         message_text=message_text,
     )
-
-
-@pytest.fixture
-def catalog(tmp_path: Path) -> MemeCatalog:
-    instance = MemeCatalog(tmp_path / "nested" / "catalog.sqlite3")
-    instance.initialize()
-    return instance
 
 
 def test_indexes_supported_file_only_once(catalog: MemeCatalog) -> None:
@@ -93,10 +86,10 @@ def test_upgrades_existing_database_without_losing_entries(catalog: MemeCatalog)
     catalog.add(input_file())
     meme = catalog.search(1)[0]
     catalog.update(meme.id, 1, "Edited title", "saved-tag")
-    with sqlite3.connect(catalog.database_path) as connection:
+    with sqlite3.connect(catalog.database.path) as connection:
         connection.execute("ALTER TABLE memes DROP COLUMN channel_name")
-    catalog.initialize()
-    catalog.initialize()
+    catalog.database.initialize()
+    catalog.database.initialize()
     restored = catalog.search(1, "saved-tag")[0]
     assert restored.title == "Edited title"
     assert restored.channel_name == ""
@@ -124,23 +117,24 @@ def test_category_filter_combines_with_query_and_guild(catalog: MemeCatalog) -> 
 
 def test_migration_backfills_name_and_preserves_metadata_and_channel_mapping(
     catalog: MemeCatalog,
+    channels: ChannelRegistry,
 ) -> None:
     catalog.add(input_file())
     meme = catalog.search(1)[0]
     catalog.update(meme.id, 1, "Mèo khóc", "saved-tag")
-    catalog.set_meme_category_id(1, 20)
-    catalog.set_meme_channel_id(1, "reaction", 2)
-    with sqlite3.connect(catalog.database_path) as connection:
+    channels.set_meme_category_id(1, 20)
+    channels.set_meme_channel_id(1, "reaction", 2)
+    with sqlite3.connect(catalog.database.path) as connection:
         connection.execute("DROP INDEX idx_memes_guild_name")
         connection.execute("ALTER TABLE memes DROP COLUMN name_index")
-    catalog.initialize()
-    catalog.initialize()
+    catalog.database.initialize()
+    catalog.database.initialize()
     restored = catalog.search(1, "saved-tag")[0]
     assert restored.name_index == "meo khoc"
     assert restored.title == "Mèo khóc"
     assert restored.attachment_id == meme.attachment_id
-    assert catalog.get_meme_category_id(1) == 20
-    assert catalog.get_meme_channel_id(1, "reaction") == 2
+    assert channels.get_meme_category_id(1) == 20
+    assert channels.get_meme_channel_id(1, "reaction") == 2
 
 
 @pytest.mark.parametrize(
@@ -163,6 +157,6 @@ def test_migration_backfills_name_and_preserves_metadata_and_channel_mapping(
 def test_indexes_support_name_category_and_source_queries(
     catalog: MemeCatalog, query: str, expected_index: str
 ) -> None:
-    with sqlite3.connect(catalog.database_path) as connection:
+    with sqlite3.connect(catalog.database.path) as connection:
         plan = connection.execute("EXPLAIN QUERY PLAN " + query).fetchall()
     assert any(expected_index in str(step) for step in plan)

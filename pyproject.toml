@@ -13,7 +13,7 @@ dependencies = ["discord.py>=2.5,<3", "python-dotenv>=1,<2"]
 dev = ["pytest>=8,<10", "ruff>=0.9", "mypy>=1.15"]
 
 [project.scripts]
-meme-bot = "meme_manager.bot:main"
+meme-bot = "meme_manager.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

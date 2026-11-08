@@ -2,7 +2,7 @@
 
 Discord stores the original attachments. SQLite stores names, search keys, category mappings,
 editable tags and Discord identifiers. The schema is defined and migrated in
-`src/meme_manager/catalog.py`; no external database is required.
+`src/meme_manager/persistence/schema.py`; no external database is required.
 
 | Table | Key | Purpose |
 | --- | --- | --- |

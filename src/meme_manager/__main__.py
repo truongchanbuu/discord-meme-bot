@@ -1,4 +1,4 @@
-from meme_manager.bot import main
+from meme_manager.app import main
 
 if __name__ == "__main__":
     main()

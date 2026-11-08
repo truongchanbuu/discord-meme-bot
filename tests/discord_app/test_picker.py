@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, Mock
 import discord
 import pytest
 
-from meme_manager.commands import _show_picker
-from meme_manager.models import Meme
-from meme_manager.views import MemeOption, MemePicker
+from meme_manager.discord_app.commands.browse import show_picker
+from meme_manager.discord_app.picker import MemeOption, MemePicker
+from meme_manager.domain.models import Meme
 
 
 def meme(kind: str = "image", filename: str = "cat.gif") -> Meme:
@@ -72,7 +72,7 @@ def test_video_preview_attaches_video_to_the_private_response() -> None:
         original = attachment("cat.mp4")
         bot = Mock(get_attachment=AsyncMock(return_value=original))
         request = interaction()
-        await _show_picker(bot, request, [meme("video", "cat.mp4")])
+        await show_picker(Mock(media=bot), request, [meme("video", "cat.mp4")])
         request.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
         payload = request.edit_original_response.call_args.kwargs
         assert payload["attachments"][0].filename == "cat.mp4"
