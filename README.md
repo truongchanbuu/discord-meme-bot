@@ -29,7 +29,7 @@ Supports `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.mp4`, `.webm`, `.mov`; actu
 **Requirements:** Python 3.12+, a Discord application/bot token, and a server you control.
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate       # Windows PowerShell: .\.venv\Scripts\Activate.ps1
 python -m pip install -e '.[dev]'
 cp .env.example .env            # Windows: copy .env.example .env
@@ -45,9 +45,10 @@ DISCORD_GUILD_ID=123456789012345678
 MEME_DB_PATH=data/memes.sqlite3
 ```
 
-Run:
+Activate the project virtual environment in each new terminal, then run from the project root:
 
 ```bash
+source .venv/bin/activate       # Windows PowerShell: .\.venv\Scripts\Activate.ps1
 python -m meme_manager
 # or: meme-bot
 ```
