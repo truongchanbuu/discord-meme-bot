@@ -7,6 +7,7 @@ from meme_manager.discord_app.bot import MemeBot
 from meme_manager.persistence.catalog import MemeCatalog
 from meme_manager.persistence.channels import ChannelRegistry
 from meme_manager.persistence.database import SQLiteDatabase
+from meme_manager.services.search import MemeSearchService
 
 
 def main() -> None:
@@ -14,5 +15,6 @@ def main() -> None:
     settings = Settings.from_environment()
     database = SQLiteDatabase(settings.database_path)
     database.initialize()
-    bot = MemeBot(settings, MemeCatalog(database), ChannelRegistry(database))
+    catalog = MemeCatalog(database)
+    bot = MemeBot(settings, catalog, ChannelRegistry(database), MemeSearchService(catalog))
     bot.run(settings.token, log_handler=None)

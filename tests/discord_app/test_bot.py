@@ -13,12 +13,15 @@ from meme_manager.discord_app.bot import MemeBot
 from meme_manager.persistence.catalog import MemeCatalog
 from meme_manager.persistence.channels import ChannelRegistry
 from meme_manager.persistence.database import SQLiteDatabase
+from meme_manager.services.search import MemeSearchService
 
 
 @pytest.fixture
 def bot(database: SQLiteDatabase, catalog: MemeCatalog, channels: ChannelRegistry) -> MemeBot:
     channels.set_meme_category_id(1, 20)
-    return MemeBot(Settings("test-token", 1, database.path), catalog, channels)
+    return MemeBot(
+        Settings("test-token", 1, database.path), catalog, channels, MemeSearchService(catalog)
+    )
 
 
 def channel(channel_id: int = 2, category_id: int | None = 20) -> Mock:
@@ -171,7 +174,7 @@ def test_no_indexing_until_meme_group_is_registered(bot: MemeBot) -> None:
     assert bot.index_message(message(channel())) == 0
 
 
-def test_search_and_list_pass_selected_category_to_catalog(bot: MemeBot) -> None:
+def test_search_uses_fuzzy_service_and_list_keeps_category_filter(bot: MemeBot) -> None:
     bot.index_message(message(channel(2)))
     bot.index_message(message(channel(5)))
     group = bot.tree.get_command("meme", guild=bot.guild)
@@ -179,7 +182,7 @@ def test_search_and_list_pass_selected_category_to_catalog(bot: MemeBot) -> None
     with patch(
         "meme_manager.discord_app.commands.browse.show_picker", new_callable=AsyncMock
     ) as picker:
-        asyncio.run(group.get_command("search").callback(request, "meo khoc", channel(5)))
+        asyncio.run(group.get_command("search").callback(request, "meo khco", channel(5)))
         assert [m.channel_id for m in picker.call_args.args[2]] == [5]
         asyncio.run(group.get_command("list").callback(request, channel(2)))
         assert [m.channel_id for m in picker.call_args.args[2]] == [2]

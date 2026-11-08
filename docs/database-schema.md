@@ -49,10 +49,16 @@ this value. Reimport preserves edited names and tags.
 | Primary key `meme_channels (guild_id, name)` | Reopen a category by requested name |
 | `idx_meme_channels_discord (guild_id, channel_id)` | Inspect requested category names for a Discord channel |
 
-`/meme search` still matches words anywhere in `search_text` using parameterized `LIKE`.
-A name B-tree index does not accelerate arbitrary substring matches. The optional `category`
-filter narrows those matches using the category index. The name index supports exact-name SQL
-lookups; do not treat the current search as full-text or semantic search.
+`/meme search` delegates to `services/search.py`. SQLite first filters the server and optional
+category, streaming all matching rows in batches of 200. The service reads `name_index` and
+normalizes the other fields, then ranks exact names, name keywords, metadata keywords and
+RapidFuzz matches. The result limit applies after ranking; candidates are not restricted to
+the latest page. The existing guild/category indexes support this candidate query.
+
+`/meme list` retains the recent-first SQLite query. The repository's literal search method
+continues using parameterized `LIKE`; the name B-tree index does not accelerate arbitrary
+substring matches. It supports exact-name SQL lookups such as the query below. There is no
+FTS table, fuzzy index, persisted score or media-content indexing.
 
 ```sql
 SELECT id, title, channel_name

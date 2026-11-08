@@ -9,6 +9,7 @@ from meme_manager.discord_app.bot import MemeBot
 from meme_manager.persistence.catalog import MemeCatalog
 from meme_manager.persistence.channels import ChannelRegistry
 from meme_manager.persistence.database import SQLiteDatabase
+from meme_manager.services.search import MemeSearchService
 
 
 @pytest.fixture
@@ -30,4 +31,6 @@ def channels(database: SQLiteDatabase) -> ChannelRegistry:
 
 @pytest.fixture
 def bot(database: SQLiteDatabase, catalog: MemeCatalog, channels: ChannelRegistry) -> MemeBot:
-    return MemeBot(Settings("test-token", 1, database.path), catalog, channels)
+    return MemeBot(
+        Settings("test-token", 1, database.path), catalog, channels, MemeSearchService(catalog)
+    )

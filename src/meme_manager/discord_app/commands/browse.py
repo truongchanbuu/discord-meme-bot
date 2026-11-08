@@ -17,13 +17,13 @@ if TYPE_CHECKING:
 def register_browse_commands(group: app_commands.Group, bot: MemeBot) -> None:
     @group.command(name="search", description="Tìm meme theo tên, mô tả, tag hoặc tên kênh")
     @app_commands.describe(
-        query="Tên, mô tả hoặc tag (không dấu cũng được)",
+        query="Tên, mô tả hoặc tag; hỗ trợ không dấu và lỗi gõ gần đúng",
         category="Kênh category để giới hạn kết quả",
     )
     async def search(
         interaction: discord.Interaction, query: str, category: discord.TextChannel | None = None
     ) -> None:
-        matches = bot.catalog.search(
+        matches = bot.search_service.search(
             bot.settings.guild_id, query, channel_id=category.id if category else None
         )
         await show_picker(bot, interaction, matches)

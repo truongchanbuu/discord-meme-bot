@@ -15,14 +15,14 @@ Upload images, GIFs, or short videos to text channels in one Discord category; t
 | Command | Purpose |
 | --- | --- |
 | `/meme category create name:...` | Create or open a meme channel under Memes (Manage Server required) |
-| `/meme search query:... category:...` | Search names, captions, tags, and channel names; optionally filter by category channel (accent-insensitive) |
+| `/meme search query:... category:...` | Search names, captions, tags, and channel names with accent-insensitive ranking and typo tolerance; optionally filter by category channel |
 | `/meme list category:...` | Browse recently indexed memes; optionally select a category channel (first 100 results) |
 | `/meme random` | Send a random indexed meme |
 | `/meme edit meme_id:... title:... tags:...` | Rename or tag a meme (uploader or server manager) |
 | `/meme remove meme_id:...` | Unindex a meme, **without deleting the original upload** |
 | `/meme import limit:...` | Backfill up to `limit` messages per text channel in the meme category (server manager) |
 
-Supports `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.mp4`, `.webm`, `.mov`; actual playback and upload limits depend on Discord and client support. Search uses a simple SQLite `LIKE` query: good for a personal collection; no OCR or semantic AI search yet.
+Supports `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.mp4`, `.webm`, `.mov`; actual playback and upload limits depend on Discord and client support. Search uses Vietnamese text normalization and RapidFuzz: exact names rank first, followed by name keywords, metadata keywords and near matches. No OCR or semantic search is implemented.
 
 ## Start the bot
 
@@ -56,6 +56,25 @@ Slash commands are registered to the specified guild at startup, so this first v
 
 Channel names become searchable categories without replacing editable tags. Existing SQLite databases are upgraded automatically; run import again to add channel names to existing entries while preserving titles and tags. After renaming a channel, reimport its messages to refresh their indexed channel name. Deletion events remove indexed attachments even if the original channel has since moved outside the category. Entries are retained when channels move; removing an entry still uses `/meme remove`.
 
+## Search behavior
+
+`/meme search` uses `MemeSearchService` and [RapidFuzz](https://rapidfuzz.github.io/RapidFuzz/Usage/process.html).
+For example, `cat vo tya` can find `cat vo tay`, and `goffy bi` can find `Goofy Bi`.
+Names, tags, captions and channel names support case/accent-insensitive matching.
+
+Results prioritize exact names, then name keywords, then metadata keywords, then fuzzy matches.
+Within each tier, similarity is ranked first and newer uploads break ties. Every query word must
+have a literal or sufficiently similar counterpart; unrelated words are not ignored. Queries
+shorter than four non-space characters use literal matches only. Empty/punctuation-only queries
+return no results. Up to 12 query words and 100 results are supported.
+
+Server/category filters run in SQLite before ranking. Candidates stream in batches without a
+recent-upload cutoff, so an old meme can still be the best match. This scans the selected
+collection and keeps only the best requested results in memory; it is intended for a personal
+library rather than a large search cluster. Edits, imports and removals take effect immediately.
+`/meme list` continues to browse the latest indexed memes. No database migration is needed for
+fuzzy search.
+
 ## Managed categories
 
 - The bot prepares the **Memes** Discord category when it connects. `/meme category create` also retries setup if it previously failed. No category or channel IDs belong in `.env`.
@@ -72,6 +91,7 @@ See [the SQLite schema](docs/database-schema.md) for stored fields, category map
 
 - `domain/`: plain records, validation and repository contracts.
 - `persistence/`: SQLite connections, migrations and focused repositories.
+- `services/`: application rules, including relevance ranking and fuzzy search.
 - `discord_app/`: gateway, category/media adapters, picker and commands grouped by task.
 - `app.py`: constructs the production dependencies and starts the bot.
 

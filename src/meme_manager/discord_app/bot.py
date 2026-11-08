@@ -11,19 +11,25 @@ from meme_manager.discord_app.commands import register_commands
 from meme_manager.discord_app.media import MemeMedia
 from meme_manager.domain.models import MemeInput
 from meme_manager.domain.repositories import ChannelRepository, MemeRepository
+from meme_manager.services.search import MemeSearchService
 
 LOG = logging.getLogger(__name__)
 
 
 class MemeBot(discord.Client):
     def __init__(
-        self, settings: Settings, catalog: MemeRepository, channels: ChannelRepository
+        self,
+        settings: Settings,
+        catalog: MemeRepository,
+        channels: ChannelRepository,
+        search_service: MemeSearchService,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True  # Required to read uploaded attachments and captions.
         super().__init__(intents=intents)
         self.settings = settings
         self.catalog = catalog
+        self.search_service = search_service
         self.channels = channels
         self.categories = CategoryManager(settings.guild_id, channels)
         self.media = MemeMedia(self)

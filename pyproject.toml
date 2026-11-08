@@ -7,7 +7,7 @@ name = "discord-meme-manager"
 version = "0.1.0"
 description = "A Discord-native personal meme library with Discord-hosted attachments."
 requires-python = ">=3.12"
-dependencies = ["discord.py>=2.5,<3", "python-dotenv>=1,<2"]
+dependencies = ["discord.py>=2.5,<3", "python-dotenv>=1,<2", "rapidfuzz>=3.14,<4"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "ruff>=0.9", "mypy>=1.15"]

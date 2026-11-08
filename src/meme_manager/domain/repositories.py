@@ -1,5 +1,6 @@
 """Storage contracts used by the application without importing a database or SDK."""
 
+from collections.abc import Iterator
 from typing import Protocol
 
 from meme_manager.domain.models import Meme, MemeInput
@@ -11,6 +12,10 @@ class MemeRepository(Protocol):
     def search(
         self, guild_id: int, query: str = "", limit: int = 100, *, channel_id: int | None = None
     ) -> list[Meme]: ...
+
+    def iter_search_candidates(
+        self, guild_id: int, *, channel_id: int | None = None
+    ) -> Iterator[Meme]: ...
 
     def random(self, guild_id: int) -> Meme | None: ...
 

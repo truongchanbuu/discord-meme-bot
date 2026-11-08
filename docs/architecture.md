@@ -18,6 +18,8 @@ src/meme_manager/
 │   ├── schema.py               # SQLite schema and additive migrations
 │   ├── catalog.py              # Meme queries, edits and indexing
 │   └── channels.py             # Managed group/channel mappings
+├── services/
+│   └── search.py                # Exact/keyword/fuzzy relevance ranking
 └── discord_app/
     ├── bot.py                  # Gateway events and command synchronization
     ├── categories.py           # Create/recover the Memes group and channels
@@ -31,8 +33,8 @@ src/meme_manager/
         └── permissions.py     # Author/server-manager authorization
 ```
 
-Tests mirror these responsibilities under `tests/domain`, `tests/persistence` and
-`tests/discord_app`; `tests/conftest.py` supplies isolated databases and repository wiring.
+Tests mirror these responsibilities under `tests/domain`, `tests/persistence`, `tests/services`
+and `tests/discord_app`; `tests/conftest.py` supplies isolated databases and repository wiring.
 
 ```mermaid
 flowchart LR
@@ -43,7 +45,8 @@ flowchart LR
     Commands --> Categories[Category manager]
     Picker --> Media[Discord media adapter]
     Bot --> Contracts[Domain repository protocols]
-    Commands --> Contracts
+    Commands --> Search[Search service]
+    Search --> Contracts
     Categories --> Contracts
     SQL -. implements .-> Contracts
     SQL --> DB[(SQLite metadata)]
@@ -55,6 +58,8 @@ flowchart LR
 - Domain records, validation and protocols import neither Discord nor SQLite.
 - `MemeRepository` and `ChannelRepository` are separate, small typed contracts. Gateway and
   category logic receive those contracts; SQLite implementations are selected in `app.py`.
+- `MemeSearchService` depends on the meme repository contract and RapidFuzz, with no Discord
+  or SQLite imports. The composition root injects it into the bot for search commands.
 - Repositories contain SQL only. They share a database object that commits successful work,
   rolls back exceptions and closes every owned connection. Schema migration has its own module.
 - `MemeBot` owns gateway behavior. `CategoryManager` owns Discord channel lifecycle; `MemeMedia`

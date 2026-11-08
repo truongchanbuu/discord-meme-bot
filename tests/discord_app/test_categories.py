@@ -12,6 +12,7 @@ from meme_manager.domain.text import meme_channel_name
 from meme_manager.persistence.catalog import MemeCatalog
 from meme_manager.persistence.channels import ChannelRegistry
 from meme_manager.persistence.database import SQLiteDatabase
+from meme_manager.services.search import MemeSearchService
 
 
 def category(category_id: int = 20, name: str = "Memes") -> Mock:
@@ -63,7 +64,10 @@ def test_creates_group_and_channel_and_reuses_after_restart(bot: MemeBot) -> Non
     assert bot.channels.get_meme_channel_id(9, "reaction") is None
     reopened = SQLiteDatabase(bot.settings.database_path)
     reopened.initialize()
-    restarted = MemeBot(bot.settings, MemeCatalog(reopened), ChannelRegistry(reopened))
+    catalog = MemeCatalog(reopened)
+    restarted = MemeBot(
+        bot.settings, catalog, ChannelRegistry(reopened), MemeSearchService(catalog)
+    )
     assert asyncio.run(restarted.categories.create_channel(server, "Reaction")) is created
     server.create_category.assert_awaited_once()
     server.create_text_channel.assert_awaited_once()

@@ -1,11 +1,14 @@
 """SQLite queries for meme metadata; media bytes remain in Discord."""
 
+from collections.abc import Iterator
 from typing import Any
 
 from meme_manager.domain.media import media_kind
 from meme_manager.domain.models import Meme, MemeInput
 from meme_manager.domain.text import default_title, normalize
 from meme_manager.persistence.database import SQLiteDatabase
+
+SEARCH_BATCH_SIZE = 200
 
 _COLUMNS = (
     "id, guild_id, channel_id, message_id, attachment_id, author_id, "
@@ -95,6 +98,22 @@ class MemeCatalog:
         with self.database.connection() as connection:
             rows = connection.execute(statement, parameters).fetchall()
         return [_as_meme(row) for row in rows]
+
+    def iter_search_candidates(
+        self, guild_id: int, *, channel_id: int | None = None
+    ) -> Iterator[Meme]:
+        """Stream every scoped candidate so ranking never truncates to recent uploads."""
+        statement = f"SELECT {_COLUMNS} FROM memes WHERE guild_id = ?"
+        parameters = [guild_id]
+        if channel_id is not None:
+            statement += " AND channel_id = ?"
+            parameters.append(channel_id)
+        statement += " ORDER BY id DESC"
+        with self.database.connection() as connection:
+            cursor = connection.execute(statement, parameters)
+            while rows := cursor.fetchmany(SEARCH_BATCH_SIZE):
+                for row in rows:
+                    yield _as_meme(row)
 
     def random(self, guild_id: int) -> Meme | None:
         """Random selection across the full catalog, not just the last page."""
