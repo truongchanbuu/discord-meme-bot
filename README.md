@@ -105,7 +105,10 @@ failure window. No gateway connection, slash-command synchronization or bot rest
 
 `/meme search` uses `MemeSearchService` and [RapidFuzz](https://rapidfuzz.github.io/RapidFuzz/Usage/process.html).
 For example, `cat vo tya` can find `cat vo tay`, and `goffy bi` can find `Goofy Bi`.
-Names, tags, captions and channel names support case/accent-insensitive matching.
+Names, tags, captions and channel names support case/accent-insensitive matching. Adjacent
+words may be typed together: `votay`, `vỗtay` and `catvotay` can find `cat vo tay`. Exact
+spelling still ranks ahead of space-insensitive matches; separate metadata fields are not
+concatenated to invent a joined word.
 
 Results prioritize exact names, then name keywords, then metadata keywords, then fuzzy matches.
 Within each tier, similarity is ranked first and newer uploads break ties. Every query word must

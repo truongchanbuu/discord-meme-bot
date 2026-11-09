@@ -149,3 +149,40 @@ def test_edits_and_removals_are_visible_without_restarting_search(catalog: MemeC
     assert search.search(1, "dog sleping")[0].id == original.id
     catalog.remove(original.id, 1)
     assert search.search(1, "dog sleping") == []
+
+
+@pytest.mark.parametrize("query", ["votay", "vỗtay", "catvotay", "vỗ tay", "cat votay"])
+def test_joined_words_find_spaced_names(catalog: MemeCatalog, query: str) -> None:
+    expected = add_meme(catalog, 1, "Cat vỗ tay")
+    assert MemeSearchService(catalog).search(1, query)[0].id == expected.id
+
+
+def test_joined_words_match_tags_caption_and_category(catalog: MemeCatalog) -> None:
+    tagged = add_meme(catalog, 1, "First", tags="vỗ tay")
+    captioned = add_meme(catalog, 2, "Second", caption="vỗ tay")
+    categorized = add_meme(catalog, 3, "Third", category="vo-tay")
+    assert {m.id for m in MemeSearchService(catalog).search(1, "votay")} == {
+        tagged.id,
+        captioned.id,
+        categorized.id,
+    }
+
+
+def test_exact_name_still_precedes_newer_space_insensitive_match(catalog: MemeCatalog) -> None:
+    exact = add_meme(catalog, 1, "votay")
+    add_meme(catalog, 2, "vỗ tay")
+    assert MemeSearchService(catalog).search(1, "votay")[0].id == exact.id
+
+
+def test_joined_words_preserve_guild_and_category_scope(catalog: MemeCatalog) -> None:
+    expected = add_meme(catalog, 1, "Cat vỗ tay", channel_id=2)
+    add_meme(catalog, 2, "votay", channel_id=3)
+    add_meme(catalog, 3, "votay", guild_id=9)
+    assert [m.id for m in MemeSearchService(catalog).search(1, "votay", channel_id=2)] == [
+        expected.id
+    ]
+
+
+def test_space_insensitive_matching_does_not_join_different_fields(catalog: MemeCatalog) -> None:
+    add_meme(catalog, 1, "a", tags="bc", category="memes")
+    assert MemeSearchService(catalog).search(1, "abc") == []

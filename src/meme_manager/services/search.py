@@ -63,12 +63,18 @@ class MemeSearchService:
             normalize(meme.channel_name),
         ]
         combined = " ".join(fields)
+        compact_fields = [field.replace(" ", "") for field in fields]
+        compact_query = query.replace(" ", "")
         if query == title:
             return EXACT_NAME, 100.0
-        if all(word in title for word in words):
-            return NAME_WORDS, fuzz.WRatio(query, title)
-        if all(word in combined for word in words):
-            return METADATA_WORDS, max(fuzz.WRatio(query, field) for field in fields)
+        if all(word in compact_fields[0] for word in words):
+            return NAME_WORDS, max(
+                fuzz.WRatio(query, title), fuzz.WRatio(compact_query, compact_fields[0])
+            )
+        if all(any(word in field for field in compact_fields) for word in words):
+            return METADATA_WORDS, max(
+                fuzz.WRatio(compact_query, field) for field in compact_fields
+            )
         if len(query.replace(" ", "")) < MIN_FUZZY_QUERY_LENGTH:
             return None
 
