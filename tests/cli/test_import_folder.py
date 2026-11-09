@@ -10,6 +10,7 @@ import yaml
 
 from meme_manager.config import RuntimeConfig, Settings
 from meme_manager.import_folder import main, upload_plan
+from meme_manager.services.config import ConfigService
 from meme_manager.services.folder_import import FolderPlan, ImportSummary
 
 
@@ -62,7 +63,7 @@ def test_dry_run_uses_media_configuration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     directory = tmp_path / "config"
-    copytree(Path("config"), directory)
+    copytree(ConfigService().directory, directory)
     source = directory / "media.yaml"
     values = yaml.safe_load(source.read_text())
     values["types"]["gif"]["enabled"] = False

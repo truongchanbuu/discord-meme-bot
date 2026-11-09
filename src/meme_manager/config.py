@@ -26,7 +26,7 @@ class RuntimeConfig:
 
     @classmethod
     def load(cls, directory: Path | None = None) -> RuntimeConfig:
-        service = ConfigService(directory or Path(os.getenv("MEME_CONFIG_DIR", "config")))
+        service = ConfigService(directory)
         bot = _options(service, "bot", BotOptions)
         database = _options(service, "database", DatabaseOptions)
         search = _options(service, "search", SearchOptions)

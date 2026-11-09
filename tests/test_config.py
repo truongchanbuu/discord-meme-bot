@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from meme_manager.config import RuntimeConfig, Settings
+from meme_manager.services.config import ConfigService
 
 
 def test_loads_without_channel_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -33,7 +34,7 @@ def test_requires_positive_guild_id(monkeypatch: pytest.MonkeyPatch, value: str)
 @pytest.fixture
 def config_directory(tmp_path: Path) -> Path:
     target = tmp_path / "config"
-    copytree(Path("config"), target)
+    copytree(ConfigService().directory, target)
     return target
 
 

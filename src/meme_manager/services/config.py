@@ -1,15 +1,22 @@
 """Read named YAML mappings from one configuration directory."""
 
+import os
 import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+DEFAULT_CONFIG_DIRECTORY = Path(__file__).resolve().parents[1] / "config"
+
 
 class ConfigService:
-    def __init__(self, directory: Path = Path("config")) -> None:
-        self.directory = directory
+    def __init__(self, directory: Path | None = None) -> None:
+        if directory is not None:
+            self.directory = directory
+            return
+        override = os.getenv("MEME_CONFIG_DIR")
+        self.directory = Path(override) if override else DEFAULT_CONFIG_DIRECTORY
 
     def load(self, name: str) -> dict[str, Any]:
         """Load a basename such as 'search'; never interpret a caller-supplied path."""

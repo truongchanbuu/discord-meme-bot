@@ -1,14 +1,16 @@
 # Cấu hình YAML
 
-Chạy bot/CLI từ thư mục gốc repository. Cấu hình được đọc và kiểm tra khi khởi động;
+Cấu hình mặc định nằm trong package tại `src/meme_manager/config/`, được đọc theo
+vị trí package, không phụ thuộc thư mục chạy lệnh. YAML được đóng gói khi build wheel.
+Cấu hình được đọc và kiểm tra khi khởi động;
 đổi YAML cần khởi động lại bot để áp dụng và đồng bộ các lựa chọn slash command.
 
 | File | Cấu hình |
 | --- | --- |
-| `config/bot.yaml` | Tên nhóm thư viện, giới hạn import lịch sử, số kết quả mỗi trang, timeout picker, giới hạn preview dự phòng, mức/định dạng log và tên biến môi trường chứa token/server ID |
-| `config/database.yaml` | Đường dẫn SQLite mặc định, tên biến môi trường ghi đè đường dẫn, timeout, batch đọc và độ dài tên/tag/caption |
-| `config/search.yaml` | Giới hạn kết quả/từ truy vấn, điều kiện fuzzy, ngân sách lỗi gõ, số từ ghép và dung lượng cache chuẩn hóa |
-| `config/media.yaml` | Category mặc định cho file ở gốc folder, nhóm định dạng, extension, loại media và trạng thái cho phép nhập |
+| `src/meme_manager/config/bot.yaml` | Tên nhóm thư viện, giới hạn import lịch sử, số kết quả mỗi trang, timeout picker, giới hạn preview dự phòng, mức/định dạng log và tên biến môi trường chứa token/server ID |
+| `src/meme_manager/config/database.yaml` | Đường dẫn SQLite mặc định, tên biến môi trường ghi đè đường dẫn, timeout, batch đọc và độ dài tên/tag/caption |
+| `src/meme_manager/config/search.yaml` | Giới hạn kết quả/từ truy vấn, điều kiện fuzzy, ngân sách lỗi gõ, số từ ghép và dung lượng cache chuẩn hóa |
+| `src/meme_manager/config/media.yaml` | Category mặc định cho file ở gốc folder, nhóm định dạng, extension, loại media và trạng thái cho phép nhập |
 
 Token và server ID vẫn lấy từ `.env`/environment theo tên trong `bot.yaml`.
 `MEME_DB_PATH`, nếu có, ghi đè `database.path` để tiếp tục dùng DB hiện tại.
@@ -19,12 +21,11 @@ chọn bộ YAML khác cho cả bot và CLI. Thư mục đó cần đủ bốn f
 ## Service đọc config theo tên
 
 ```python
-from pathlib import Path
 from meme_manager.services.config import ConfigService
 from meme_manager.config import RuntimeConfig
 
-service = ConfigService(Path("config"))
-search_values = service.load("search")  # đọc config/search.yaml thành dict
+service = ConfigService()
+search_values = service.load("search")  # đọc src/meme_manager/config/search.yaml thành dict
 runtime = RuntimeConfig.load()  # đọc đủ file, kiểm tra kiểu và tạo options có type
 ```
 

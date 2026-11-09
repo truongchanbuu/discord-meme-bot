@@ -8,6 +8,7 @@ private previews, selects and buttons.
 src/meme_manager/
 ├── app.py                      # Startup and production dependency wiring
 ├── config.py                   # Typed YAML validation and environment-backed credentials
+├── config/                     # Packaged default YAML files
 ├── import_folder.py            # CLI composition and dry-run entrypoint
 ├── domain/
 │   ├── options.py              # Typed runtime options without I/O
@@ -143,7 +144,7 @@ a separate product decision and authorization review.
 
 ## Runtime configuration
 
-The composition roots load `config/*.yaml` through `ConfigService` and validate typed
+The composition roots load `src/meme_manager/config/*.yaml` through `ConfigService` and validate typed
 options before creating adapters. Pure media rules receive a shared `MediaPolicy` so folder
 scanning and gateway ingestion agree. Search/list resolve a file-type group to extensions
 and filter scoped SQLite candidates before ranking. Disabling ingest does not hide existing

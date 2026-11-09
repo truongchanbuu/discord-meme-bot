@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from meme_manager.config import RuntimeConfig
 from meme_manager.services.config import ConfigService
 
 
@@ -42,3 +43,31 @@ def test_invalid_or_unsafe_yaml_has_sanitized_error(tmp_path: Path, document: st
 def test_missing_file_is_not_silently_defaulted(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         ConfigService(tmp_path).load("missing")
+
+
+def test_packaged_defaults_work_outside_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MEME_CONFIG_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    service = ConfigService()
+    assert service.load("media")["types"]["png"]["extensions"] == ["png"]
+    assert RuntimeConfig.load().media.extensions_for("jpg") == ("jpg", "jpeg")
+
+
+def test_explicit_directory_takes_precedence_over_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "search.yaml").write_text("max_results: 5\n", encoding="utf-8")
+    monkeypatch.setenv("MEME_CONFIG_DIR", str(tmp_path / "missing"))
+    assert ConfigService(tmp_path).load("search") == {"max_results": 5}
+
+
+def test_environment_override_is_used_without_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MEME_CONFIG_DIR", str(tmp_path))
+    with pytest.raises(FileNotFoundError):
+        ConfigService().load("search")
+    (tmp_path / "search.yaml").write_text("max_results: 7\n", encoding="utf-8")
+    assert ConfigService().load("search") == {"max_results": 7}

@@ -26,7 +26,7 @@ Supports `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.mp4`, `.webm`, `.mov`; actu
 
 ## Configuration
 
-Operational settings live in `config/bot.yaml`, `database.yaml`, `search.yaml` and
+Operational settings live in `src/meme_manager/config/bot.yaml`, `database.yaml`, `search.yaml` and
 `media.yaml`. `ConfigService.load("search")` reads a YAML file by name; startup validates
 and injects typed options. Token/server identity remain environment-backed.
 See [configuration reference](docs/configuration.md) for all options and directory overrides.
@@ -128,7 +128,7 @@ Unicode and filename separators such as underscores are supported. Joined typos 
 `votya` can find `vỗ tay`. Every query word must
 have a literal or sufficiently similar counterpart; unrelated words are not ignored. Queries
 shorter than four non-space characters use literal matches only. Empty/punctuation-only queries
-return no results. The default limits are 12 query words and 100 results; tune them in `config/search.yaml`.
+return no results. The default limits are 12 query words and 100 results; tune them in `src/meme_manager/config/search.yaml`.
 
 See [search research and evaluation](docs/search-research.md) for library choices, measured
 results and limits. Search keys are cached per text; search results are always fresh.

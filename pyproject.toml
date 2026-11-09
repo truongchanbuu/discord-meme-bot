@@ -18,6 +18,10 @@ meme-import = "meme_manager.import_folder:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+namespaces = false
+
+[tool.setuptools.package-data]
+meme_manager = ["config/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
