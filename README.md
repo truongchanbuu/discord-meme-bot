@@ -57,6 +57,50 @@ Slash commands are registered to the specified guild at startup, so this first v
 
 Channel names become searchable categories without replacing editable tags. Existing SQLite databases are upgraded automatically; run import again to add channel names to existing entries while preserving titles and tags. After renaming a channel, reimport its messages to refresh their indexed channel name. Deletion events remove indexed attachments even if the original channel has since moved outside the category. Entries are retained when channels move; removing an entry still uses `/meme remove`.
 
+## Import a local folder
+
+The CLI scans local media, derives category names, uploads to Discord and stores the returned
+message/attachment IDs in SQLite. Files remain in the local folder and Discord; no media bytes
+are stored in SQLite. It uses REST only, so the normal bot can keep running. Run from the project root so a relative
+`MEME_DB_PATH` resolves to the same database as the bot.
+
+```bash
+source .venv/bin/activate
+python -m meme_manager.import_folder "/path/to/memes" --dry-run
+python -m meme_manager.import_folder "/path/to/memes"
+# Optional installed alias:
+meme-import "/path/to/memes" --category reaction
+```
+
+`--dry-run` reads files and computes SHA-256 fingerprints without loading credentials,
+connecting to Discord or creating/writing a database. It prints planned categories and sizes.
+It does not validate Discord permissions or server upload limits. After updating the package,
+use `python -m pip install -e .` to install the `meme-import` alias.
+
+The first subfolder becomes the category: `memes/cat/videos/a.mp4` goes to `#cat`.
+Files directly under `memes/` go to `#general`. `--category "Mèo Khóc"` puts all supported files
+into `#meo-khoc`. Unsupported files and symlinks are skipped. Unreadable files/directories and
+invalid category names are reported. Per-file failures do not discard completed uploads;
+a nonzero exit code reports partial failure.
+
+Successful uploads are checkpointed in `folder_imports` by server, canonical category and file
+SHA-256. Rerunning the command checks the saved Discord source and skips uploading it again,
+repairing a missing search-index entry and preserving edited titles/tags. A renamed local
+file with identical bytes/category reuses its checkpoint; changed bytes create a new meme.
+Identical files in different categories remain separate.
+
+For media indexed before the CLI existed, matching category/size candidates are verified by
+downloading the original attachment and comparing SHA-256. Identical originals are adopted
+without reposting. A source missing from Discord can be uploaded again; a permission error
+reports failure rather than reposting an unreadable original. Previously unindexed Discord
+messages and byte-altered versions cannot be matched this way.
+
+Run one importer at a time. Keep files unchanged during the import and retain the SQLite
+backup. Discord and SQLite do not share a transaction: interruption after Discord accepts a
+file but before its checkpoint commits can require manual recovery. Uploaded message links
+are printed before checkpoint/index writes. Do not rely on exactly-once delivery across that
+failure window. No gateway connection, slash-command synchronization or bot restart is needed.
+
 ## Search behavior
 
 `/meme search` uses `MemeSearchService` and [RapidFuzz](https://rapidfuzz.github.io/RapidFuzz/Usage/process.html).

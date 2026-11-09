@@ -8,6 +8,7 @@ private previews, selects and buttons.
 src/meme_manager/
 ├── app.py                      # Startup and production dependency wiring
 ├── config.py                   # Environment validation
+├── import_folder.py            # CLI composition and dry-run entrypoint
 ├── domain/
 │   ├── models.py               # Plain meme input/result records
 │   ├── text.py                 # Name normalization and search text rules
@@ -17,13 +18,16 @@ src/meme_manager/
 │   ├── database.py             # Connections, transactions and initialization
 │   ├── schema.py               # SQLite schema and additive migrations
 │   ├── catalog.py              # Meme queries, edits and indexing
-│   └── channels.py             # Managed group/channel mappings
+│   ├── channels.py             # Managed group/channel mappings
+│   └── imports.py              # Folder upload checkpoints
 ├── services/
-│   └── search.py                # Exact/keyword/fuzzy relevance ranking
+│   ├── search.py                # Exact/keyword/fuzzy relevance ranking
+│   └── folder_import.py         # Local scan, deduplication, resume and indexing
 └── discord_app/
     ├── bot.py                  # Gateway events and command synchronization
     ├── categories.py           # Create/recover the Memes group and channels
     ├── media.py                # Retrieve and resend original attachments
+    ├── folder_upload.py        # REST-only folder upload/recovery adapter
     ├── picker.py               # Private media preview and result navigation
     └── commands/
         ├── __init__.py         # Assemble the guild's command group
@@ -93,6 +97,20 @@ messages, DMs and other guilds are excluded. Import requires Manage Server.
   deletions can leave stale records, which show a missing-media warning when accessed.
 - Removing an index entry does not delete the original Discord message.
 
+## Folder import
+
+`python -m meme_manager.import_folder` plans files locally, then uses `FolderImportService`
+with repository contracts and a `FolderUploader` protocol. The Discord adapter creates/reuses
+category channels and posts files through a plain REST client. It never connects a gateway or
+synchronizes slash commands. The main bot intentionally ignores bot-authored messages, so the
+CLI indexes returned attachment metadata explicitly. Dry-run creates neither a client nor a DB.
+
+Local SHA-256 keys deduplicate within a server/category. Existing indexed files can be adopted
+after remote content verification. Checkpoints commit before catalog writes so reruns can
+repair indexing failures. Only a confirmed missing source permits reupload; permissions/errors
+do not. Run one importer at a time; acceptance by Discord before a failed local checkpoint is
+an unavoidable recovery window. User-facing diagnostics include the uploaded message link.
+
 ## Interaction acknowledgement
 
 Search/list commands defer a private response before querying or ranking. Their synchronous
@@ -115,5 +133,6 @@ Run one bot process per SQLite database and token. Stop the previous terminal pr
 starting another; do not leave a background copy running. Repositories remain synchronous;
 search/list run their queries in worker threads. Indexing writes are small gateway operations. Discord attachments are not
 an archival guarantee: retain backups of important files and the metadata database.
-No hashing, OCR, transcoding or semantic search is implemented. Multiple servers would require
+Folder imports use SHA-256 for exact-byte deduplication. No perceptual image matching, OCR,
+transcoding or semantic search is implemented. Multiple servers would require
 a separate product decision and authorization review.

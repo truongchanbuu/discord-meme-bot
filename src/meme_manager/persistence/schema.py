@@ -18,6 +18,16 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             channel_id INTEGER NOT NULL,
             PRIMARY KEY (guild_id, name)
         );
+        CREATE TABLE IF NOT EXISTS folder_imports (
+            guild_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            channel_id INTEGER NOT NULL,
+            message_id INTEGER NOT NULL,
+            attachment_id INTEGER NOT NULL,
+            PRIMARY KEY (guild_id, category, content_hash)
+        );
         CREATE TABLE IF NOT EXISTS memes (
             id INTEGER PRIMARY KEY,
             guild_id INTEGER NOT NULL,

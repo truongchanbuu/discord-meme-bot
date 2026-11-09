@@ -9,6 +9,7 @@ editable tags and Discord identifiers. The schema is defined and migrated in
 | `meme_settings` | `guild_id` | Saved ID of the bot-managed Memes group (`category_id`) |
 | `meme_channels` | `(guild_id, name)` | Requested category name mapped to its Discord text channel ID |
 | `memes` | `id`, unique `attachment_id` | One record per original attachment |
+| `folder_imports` | `(guild_id, category, content_hash)` | Durable folder-upload checkpoint keyed by canonical category and SHA-256 |
 
 A business category such as `reaction` is a Discord text channel. The enclosing Discord
 Category named Memes is the library container. These are different identifiers.
@@ -71,3 +72,17 @@ On startup, existing databases gain missing columns and indexes. Existing titles
 `name_index`; attachment IDs, names, tags and managed channel mappings remain intact. Repeated
 startup is safe. The old message-only index is replaced by the scoped source-message index.
 Back up the SQLite database before upgrades; do not edit derived search keys manually.
+
+## Folder upload checkpoints
+
+`folder_imports` stores `guild_id`, canonical `category`, `content_hash`, source `relative_path`,
+`channel_id`, `message_id` and `attachment_id`. The composite primary key is the resume lookup
+index. Only relative paths and hashes are stored, with no local media bytes, tokens or CDN URLs.
+The table is added automatically on initialization without rewriting existing records.
+
+A successful Discord upload checkpoints its reference before the separate meme-index write.
+A rerun can therefore restore the index from that reference without reposting. Removing a meme
+from search does not remove its checkpoint; explicitly rerunning the folder import reindexes
+it if the original remains accessible. A confirmed deleted attachment can be reuploaded and
+replace the checkpoint, removing only its stale index entry. Guild/category boundaries apply
+to checkpoint lookups. There is no cross-system transaction or concurrent-import lease.

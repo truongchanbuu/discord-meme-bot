@@ -1,6 +1,7 @@
 """Plain value objects. This module must never import discord.py or a database client."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,3 +39,20 @@ class Meme:
     @property
     def jump_url(self) -> str:
         return f"https://discord.com/channels/{self.guild_id}/{self.channel_id}/{self.message_id}"
+
+
+@dataclass(frozen=True, slots=True)
+class LocalMeme:
+    path: Path
+    relative_path: str
+    category: str
+    content_hash: str
+    file_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class ImportedFile:
+    guild_id: int
+    channel_id: int
+    message_id: int
+    attachment_id: int

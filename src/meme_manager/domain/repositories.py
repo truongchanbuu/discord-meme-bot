@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 from typing import Protocol
 
-from meme_manager.domain.models import Meme, MemeInput
+from meme_manager.domain.models import ImportedFile, LocalMeme, Meme, MemeInput
 
 
 class MemeRepository(Protocol):
@@ -36,3 +36,9 @@ class ChannelRepository(Protocol):
     def get_meme_channel_id(self, guild_id: int, name: str) -> int | None: ...
 
     def set_meme_channel_id(self, guild_id: int, name: str, channel_id: int) -> None: ...
+
+
+class FolderImportRepository(Protocol):
+    def get(self, guild_id: int, category: str, content_hash: str) -> ImportedFile | None: ...
+
+    def save(self, source: LocalMeme, record: MemeInput) -> None: ...

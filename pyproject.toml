@@ -14,6 +14,7 @@ dev = ["pytest>=8,<10", "ruff>=0.9", "mypy>=1.15"]
 
 [project.scripts]
 meme-bot = "meme_manager.app:main"
+meme-import = "meme_manager.import_folder:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
