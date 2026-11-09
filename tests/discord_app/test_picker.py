@@ -67,13 +67,13 @@ def test_image_and_gif_preview_uses_fresh_image_url(filename: str) -> None:
     asyncio.run(run())
 
 
-def test_video_preview_attaches_video_to_the_private_response() -> None:
+def test_video_preview_edits_the_previously_deferred_private_response() -> None:
     async def run() -> None:
         original = attachment("cat.mp4")
         bot = Mock(get_attachment=AsyncMock(return_value=original))
         request = interaction()
         await show_picker(Mock(media=bot), request, [meme("video", "cat.mp4")])
-        request.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
+        request.response.defer.assert_not_awaited()
         payload = request.edit_original_response.call_args.kwargs
         assert payload["attachments"][0].filename == "cat.mp4"
         payload["attachments"][0].close.assert_called_once()

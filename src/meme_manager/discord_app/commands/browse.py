@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import discord
@@ -23,8 +24,12 @@ def register_browse_commands(group: app_commands.Group, bot: MemeBot) -> None:
     async def search(
         interaction: discord.Interaction, query: str, category: discord.TextChannel | None = None
     ) -> None:
-        matches = bot.search_service.search(
-            bot.settings.guild_id, query, channel_id=category.id if category else None
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        matches = await asyncio.to_thread(
+            bot.search_service.search,
+            bot.settings.guild_id,
+            query,
+            channel_id=category.id if category else None,
         )
         await show_picker(bot, interaction, matches)
 
@@ -33,8 +38,11 @@ def register_browse_commands(group: app_commands.Group, bot: MemeBot) -> None:
     async def list_memes(
         interaction: discord.Interaction, category: discord.TextChannel | None = None
     ) -> None:
-        matches = bot.catalog.search(
-            bot.settings.guild_id, channel_id=category.id if category else None
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        matches = await asyncio.to_thread(
+            bot.catalog.search,
+            bot.settings.guild_id,
+            channel_id=category.id if category else None,
         )
         await show_picker(bot, interaction, matches)
 
@@ -49,8 +57,7 @@ def register_browse_commands(group: app_commands.Group, bot: MemeBot) -> None:
 
 async def show_picker(bot: MemeBot, interaction: discord.Interaction, matches: list[Meme]) -> None:
     if not matches:
-        await interaction.response.send_message("Không tìm thấy meme phù hợp.", ephemeral=True)
+        await interaction.edit_original_response(content="Không tìm thấy meme phù hợp.")
         return
     view = MemePicker(bot.media, matches, interaction.user.id)
-    await interaction.response.defer(ephemeral=True, thinking=True)
     await view.show_preview(interaction)

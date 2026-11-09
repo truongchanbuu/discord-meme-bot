@@ -93,6 +93,13 @@ messages, DMs and other guilds are excluded. Import requires Manage Server.
   deletions can leave stale records, which show a missing-media warning when accessed.
 - Removing an index entry does not delete the original Discord message.
 
+## Interaction acknowledgement
+
+Search/list commands defer a private response before querying or ranking. Their synchronous
+SQLite/search work runs in a worker thread so scans do not block the gateway event loop.
+Both empty results and media previews edit that deferred response; the picker never sends a
+second initial acknowledgement. This respects Discord's [initial response deadline](https://docs.discord.com/developers/interactions/receiving-and-responding).
+
 ## Preview and sharing
 
 Five results appear per page. Images/GIFs use freshly fetched URLs in the preview embed.
@@ -104,8 +111,9 @@ Playback depends on Discord/client codec support.
 
 ## Operational limits
 
-Run one bot process per SQLite database. SQLite operations are small synchronous queries;
-revisit event-loop blocking only if measured usage requires it. Discord attachments are not
+Run one bot process per SQLite database and token. Stop the previous terminal process before
+starting another; do not leave a background copy running. Repositories remain synchronous;
+search/list run their queries in worker threads. Indexing writes are small gateway operations. Discord attachments are not
 an archival guarantee: retain backups of important files and the metadata database.
 No hashing, OCR, transcoding or semantic search is implemented. Multiple servers would require
 a separate product decision and authorization review.
