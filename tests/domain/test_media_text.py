@@ -17,4 +17,5 @@ def test_normalize_vietnamese() -> None:
 def test_search_key_preserves_accents_separately_from_folding() -> None:
     assert search_keys("ĐẤT_mèo—khóc").accented == "đất mèo khóc"
     assert search_keys("ĐẤT_mèo—khóc").folded == "dat meo khoc"
+    assert search_keys("𝐌È𝐎_𝐊𝐇Ó𝐂").accented == "mèo khóc"
     assert search_keys("me\u0300o\u200b_kho\u0301c").accented == "mèo khóc"

@@ -207,6 +207,7 @@ def test_accent_exact_match_precedes_newer_folded_homographs(
         "mèo_khóc",
         "mèo-khóc",
         "ｍèｏ khóｃ",
+        "𝐌È𝐎_𝐊𝐇Ó𝐂",
         "mèo\u00a0khóc",
         "mèo\u200bkhóc",
         "meokhco",

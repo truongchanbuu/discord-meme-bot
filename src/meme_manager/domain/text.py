@@ -38,6 +38,7 @@ class SearchKeys:
 def search_keys(text: str) -> SearchKeys:
     """Cache both search forms per text, without changing display or persisted legacy keys."""
     visible = "".join(char for char in text if unicodedata.category(char) != "Cf")
-    canonical = unicodedata.normalize("NFKC", visible.casefold())
+    canonical = unicodedata.normalize("NFKC", visible)
+    canonical = unicodedata.normalize("NFKC", canonical.casefold())
     accented = " ".join(re.findall(r"[^\W_]+", canonical, flags=re.UNICODE))
     return SearchKeys(accented, normalize(accented))
