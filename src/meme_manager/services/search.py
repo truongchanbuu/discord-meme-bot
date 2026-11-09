@@ -2,20 +2,16 @@
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from heapq import nlargest
 
 from rapidfuzz import fuzz, process
 from rapidfuzz.distance import DamerauLevenshtein
 
 from meme_manager.domain.models import Meme
+from meme_manager.domain.options import SearchOptions
 from meme_manager.domain.repositories import MemeRepository
 from meme_manager.domain.text import search_keys
-
-MAX_SEARCH_RESULTS = 100
-MAX_QUERY_WORDS = 12
-MIN_FUZZY_QUERY_LENGTH = 4
-MIN_FUZZY_SCORE = 75.0
-MAX_JOINED_WORDS = 3
 
 EXACT_ACCENTED_NAME = 5
 EXACT_NAME = 4
@@ -35,26 +31,33 @@ class SearchQuery:
 
 
 class MemeSearchService:
-    def __init__(self, repository: MemeRepository) -> None:
+    def __init__(self, repository: MemeRepository, options: SearchOptions) -> None:
         self.repository = repository
+        self.options = options
+        self._search_keys = lru_cache(maxsize=options.normalization_cache_entries)(search_keys)
 
     def search(
         self,
         guild_id: int,
         query: str,
-        limit: int = MAX_SEARCH_RESULTS,
+        limit: int | None = None,
         *,
         channel_id: int | None = None,
+        extensions: tuple[str, ...] | None = None,
     ) -> list[Meme]:
-        keys = search_keys(query)
-        accented = " ".join(keys.accented.split()[:MAX_QUERY_WORDS])
-        folded = " ".join(keys.folded.split()[:MAX_QUERY_WORDS])
+        keys = self._search_keys(query)
+        accented = " ".join(keys.accented.split()[: self.options.max_query_words])
+        folded = " ".join(keys.folded.split()[: self.options.max_query_words])
         if not folded:
             return []
         prepared = SearchQuery(accented, folded, tuple(folded.split()), folded.replace(" ", ""))
-        candidates = self.repository.iter_search_candidates(guild_id, channel_id=channel_id)
+        candidates = self.repository.iter_search_candidates(
+            guild_id, channel_id=channel_id, extensions=extensions
+        )
         ranked = self._ranked_matches(candidates, prepared)
-        limit = min(max(limit, 1), MAX_SEARCH_RESULTS)
+        limit = min(
+            max(self.options.max_results if limit is None else limit, 1), self.options.max_results
+        )
         return [match[-1] for match in nlargest(limit, ranked, key=lambda match: match[:4])]
 
     def _ranked_matches(
@@ -62,7 +65,7 @@ class MemeSearchService:
     ) -> Iterator[RankedMeme]:
         for meme in candidates:
             keys = [
-                search_keys(value)
+                self._search_keys(value)
                 for value in (meme.title, meme.tags, meme.message_text, meme.channel_name)
             ]
             accented = [key.accented for key in keys]
@@ -105,17 +108,21 @@ class MemeSearchService:
     def _fuzzy_score(
         self, query: SearchQuery, fields: list[str], compact: list[str]
     ) -> float | None:
-        if len(query.compact) < MIN_FUZZY_QUERY_LENGTH:
+        if len(query.compact) < self.options.min_fuzzy_query_length:
             return None
         scores: list[float] = []
         for word in query.words:
             if any(word in field for field in compact):
                 scores.append(100.0)
                 continue
-            if len(word) < 3:
+            if len(word) < self.options.min_fuzzy_word_length:
                 return None
             # Bound edits by word length, not by a permissive partial-match score.
-            budget = 1 if len(word) < 7 else 2
+            budget = (
+                self.options.short_word_edits
+                if len(word) < self.options.long_word_length
+                else self.options.long_word_edits
+            )
             match = process.extractOne(
                 word,
                 self._word_candidates(fields, len(word), budget),
@@ -126,7 +133,7 @@ class MemeSearchService:
                 return None
             scores.append(100.0 * (1 - match[1] / max(len(word), len(match[0]))))
         similarity = sum(scores) / len(scores)
-        return similarity if similarity >= MIN_FUZZY_SCORE else None
+        return similarity if similarity >= self.options.min_fuzzy_score else None
 
     def _word_candidates(self, fields: Sequence[str], length: int, budget: int) -> Iterator[str]:
         # Join adjacent syllables within one field only; never invent words across metadata.
@@ -134,7 +141,7 @@ class MemeSearchService:
             words = field.split()
             for start in range(len(words)):
                 joined = ""
-                for stop in range(start, min(start + MAX_JOINED_WORDS, len(words))):
+                for stop in range(start, min(start + self.options.max_joined_words, len(words))):
                     joined += words[stop]
                     if len(joined) > length + budget:
                         break

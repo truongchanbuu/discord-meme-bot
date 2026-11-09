@@ -5,14 +5,14 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from meme_manager.domain.options import DatabaseOptions
 from meme_manager.persistence.schema import initialize_schema
-
-SQLITE_TIMEOUT_SECONDS = 10
 
 
 class SQLiteDatabase:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, options: DatabaseOptions) -> None:
         self.path = path
+        self.options = options
 
     def initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -21,7 +21,7 @@ class SQLiteDatabase:
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path, timeout=SQLITE_TIMEOUT_SECONDS)
+        connection = sqlite3.connect(self.path, timeout=self.options.timeout_seconds)
         try:
             with connection:
                 yield connection

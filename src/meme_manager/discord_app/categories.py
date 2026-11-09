@@ -4,13 +4,15 @@ import asyncio
 
 import discord
 
+from meme_manager.domain.options import BotOptions
 from meme_manager.domain.repositories import ChannelRepository
 from meme_manager.domain.text import meme_channel_name
 
 
 class CategoryManager:
-    def __init__(self, guild_id: int, registry: ChannelRepository) -> None:
+    def __init__(self, guild_id: int, registry: ChannelRepository, options: BotOptions) -> None:
         self.guild_id = guild_id
+        self.options = options
         self.registry = registry
         self._category_lock = asyncio.Lock()
         self._channel_lock = asyncio.Lock()
@@ -25,21 +27,24 @@ class CategoryManager:
             saved = next((channel for channel in channels if channel.id == category_id), None)
             if saved is not None:
                 if not isinstance(saved, discord.CategoryChannel):
-                    raise ValueError("Nhóm Memes đã lưu không còn là category.")
+                    raise ValueError("Nhóm thư viện meme đã lưu không còn là category.")
                 return saved
             matches = [
                 channel
                 for channel in channels
-                if isinstance(channel, discord.CategoryChannel) and channel.name == "Memes"
+                if isinstance(channel, discord.CategoryChannel)
+                and channel.name == self.options.category_name
             ]
             if len(matches) > 1:
                 raise ValueError(
-                    "Có nhiều nhóm tên Memes. Hãy giữ một nhóm mang tên này rồi thử lại."
+                    "Có nhiều nhóm cùng tên thư viện. Hãy giữ một nhóm mang tên này rồi thử lại."
                 )
             category = (
                 matches[0]
                 if matches
-                else await guild.create_category("Memes", reason="Thiết lập thư viện meme")
+                else await guild.create_category(
+                    self.options.category_name, reason="Thiết lập thư viện meme"
+                )
             )
             self.registry.set_meme_category_id(guild.id, category.id)
             return category
@@ -55,7 +60,7 @@ class CategoryManager:
             if saved is not None:
                 if not isinstance(saved, discord.TextChannel) or saved.category_id != category.id:
                     raise ValueError(
-                        "Kênh đã lưu nằm ngoài nhóm Memes. Hãy chuyển kênh về nhóm này."
+                        "Kênh đã lưu nằm ngoài nhóm thư viện meme. Hãy chuyển kênh về nhóm này."
                     )
                 return saved
             matches = [
@@ -67,7 +72,7 @@ class CategoryManager:
             ]
             if len(matches) > 1:
                 raise ValueError(
-                    "Có nhiều kênh cùng tên trong Memes. Hãy đổi tên kênh trùng rồi thử lại."
+                    "Có nhiều kênh cùng tên trong nhóm thư viện meme. Hãy đổi tên kênh trùng rồi thử lại."
                 )
             channel = (
                 matches[0]

@@ -16,13 +16,25 @@ if TYPE_CHECKING:
 
 
 def register_browse_commands(group: app_commands.Group, bot: MemeBot) -> None:
+    file_choices = [
+        app_commands.Choice(
+            name=f"{item.name} ({', '.join(item.extensions)})"[:100], value=item.name
+        )
+        for item in bot.settings.config.media.types
+    ]
+
     @group.command(name="search", description="Tìm meme theo tên, mô tả, tag hoặc tên kênh")
     @app_commands.describe(
         query="Tên, mô tả hoặc tag; hỗ trợ không dấu và lỗi gõ gần đúng",
         category="Kênh category để giới hạn kết quả",
+        file_type="Định dạng file muốn tìm",
     )
+    @app_commands.choices(file_type=file_choices)
     async def search(
-        interaction: discord.Interaction, query: str, category: discord.TextChannel | None = None
+        interaction: discord.Interaction,
+        query: str,
+        category: discord.TextChannel | None = None,
+        file_type: str | None = None,
     ) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
         matches = await asyncio.to_thread(
@@ -30,19 +42,24 @@ def register_browse_commands(group: app_commands.Group, bot: MemeBot) -> None:
             bot.settings.guild_id,
             query,
             channel_id=category.id if category else None,
+            extensions=bot.settings.config.media.extensions_for(file_type),
         )
         await show_picker(bot, interaction, matches)
 
     @group.command(name="list", description="Browse recently saved memes")
-    @app_commands.describe(category="Kênh category muốn xem")
+    @app_commands.describe(category="Kênh category muốn xem", file_type="Định dạng file muốn xem")
+    @app_commands.choices(file_type=file_choices)
     async def list_memes(
-        interaction: discord.Interaction, category: discord.TextChannel | None = None
+        interaction: discord.Interaction,
+        category: discord.TextChannel | None = None,
+        file_type: str | None = None,
     ) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
         matches = await asyncio.to_thread(
             bot.catalog.search,
             bot.settings.guild_id,
             channel_id=category.id if category else None,
+            extensions=bot.settings.config.media.extensions_for(file_type),
         )
         await show_picker(bot, interaction, matches)
 
@@ -59,5 +76,5 @@ async def show_picker(bot: MemeBot, interaction: discord.Interaction, matches: l
     if not matches:
         await interaction.edit_original_response(content="Không tìm thấy meme phù hợp.")
         return
-    view = MemePicker(bot.media, matches, interaction.user.id)
+    view = MemePicker(bot.media, matches, interaction.user.id, options=bot.settings.config.bot)
     await view.show_preview(interaction)

@@ -1,12 +1,14 @@
 """Bot-managed Discord channels are persisted, recoverable, and manager-only."""
 
 import asyncio
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import discord
 import pytest
 
+from meme_manager.config import RuntimeConfig
 from meme_manager.discord_app.bot import MemeBot
 from meme_manager.domain.text import meme_channel_name
 from meme_manager.persistence.catalog import MemeCatalog
@@ -54,7 +56,9 @@ def guild(channels: list[Mock]) -> Mock:
     return result
 
 
-def test_creates_group_and_channel_and_reuses_after_restart(bot: MemeBot) -> None:
+def test_creates_group_and_channel_and_reuses_after_restart(
+    bot: MemeBot, config: RuntimeConfig
+) -> None:
     server = guild([])
     created = asyncio.run(bot.categories.create_channel(server, "Reaction"))
     assert created.name == "reaction"
@@ -62,11 +66,14 @@ def test_creates_group_and_channel_and_reuses_after_restart(bot: MemeBot) -> Non
     assert bot.channels.get_meme_channel_id(1, "reaction") == 30
     assert bot.channels.get_meme_category_id(9) is None
     assert bot.channels.get_meme_channel_id(9, "reaction") is None
-    reopened = SQLiteDatabase(bot.settings.database_path)
+    reopened = SQLiteDatabase(bot.settings.database_path, options=config.database)
     reopened.initialize()
-    catalog = MemeCatalog(reopened)
+    catalog = MemeCatalog(reopened, media=config.media, search=config.search)
     restarted = MemeBot(
-        bot.settings, catalog, ChannelRegistry(reopened), MemeSearchService(catalog)
+        bot.settings,
+        catalog,
+        ChannelRegistry(reopened),
+        MemeSearchService(catalog, options=config.search),
     )
     assert asyncio.run(restarted.categories.create_channel(server, "Reaction")) is created
     server.create_category.assert_awaited_once()
@@ -260,5 +267,15 @@ def test_startup_permission_failure_is_logged(
     )
     bot.get_guild = Mock(return_value=server)
     asyncio.run(bot.on_ready())
-    assert "Could not prepare Memes" in caplog.text
+    assert "Could not prepare meme library" in caplog.text
     assert bot.channels.get_meme_category_id(1) is None
+
+
+def test_category_name_comes_from_configuration(bot: MemeBot) -> None:
+    bot.categories.options = replace(bot.settings.config.bot, category_name="Thư viện meme")
+    server = guild([])
+    created = asyncio.run(bot.categories.ensure_group(server))
+    assert created.name == "Thư viện meme"
+    server.create_category.assert_awaited_once_with(
+        "Thư viện meme", reason="Thiết lập thư viện meme"
+    )

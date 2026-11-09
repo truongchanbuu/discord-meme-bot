@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import discord
 import pytest
 
+from meme_manager.config import RuntimeConfig
 from meme_manager.discord_app.commands.browse import show_picker
 from meme_manager.discord_app.picker import MemeOption, MemePicker
 from meme_manager.domain.models import Meme
@@ -53,11 +54,11 @@ def interaction() -> Mock:
 
 
 @pytest.mark.parametrize("filename", ["cat.gif", "cat.png", "cat.webp"])
-def test_image_and_gif_preview_uses_fresh_image_url(filename: str) -> None:
+def test_image_and_gif_preview_uses_fresh_image_url(filename: str, config: RuntimeConfig) -> None:
     async def run() -> None:
         original = attachment(filename)
         bot = Mock(get_attachment=AsyncMock(return_value=original))
-        view = MemePicker(bot, [meme(filename=filename)], 50)
+        view = MemePicker(bot, [meme(filename=filename)], 50, options=config.bot)
         embed, files = await view.preview(1000)
         assert embed.image.url == original.url
         assert files == []
@@ -67,12 +68,16 @@ def test_image_and_gif_preview_uses_fresh_image_url(filename: str) -> None:
     asyncio.run(run())
 
 
-def test_video_preview_edits_the_previously_deferred_private_response() -> None:
+def test_video_preview_edits_the_previously_deferred_private_response(
+    config: RuntimeConfig,
+) -> None:
     async def run() -> None:
         original = attachment("cat.mp4")
         bot = Mock(get_attachment=AsyncMock(return_value=original))
         request = interaction()
-        await show_picker(Mock(media=bot), request, [meme("video", "cat.mp4")])
+        await show_picker(
+            Mock(media=bot, settings=Mock(config=config)), request, [meme("video", "cat.mp4")]
+        )
         request.response.defer.assert_not_awaited()
         payload = request.edit_original_response.call_args.kwargs
         assert payload["attachments"][0].filename == "cat.mp4"
@@ -85,12 +90,12 @@ def test_video_preview_edits_the_previously_deferred_private_response() -> None:
     asyncio.run(run())
 
 
-def test_switching_from_video_to_image_removes_previous_attachment() -> None:
+def test_switching_from_video_to_image_removes_previous_attachment(config: RuntimeConfig) -> None:
     async def run() -> None:
         video = meme("video", "cat.mp4")
         image = replace(meme(), id=2)
         bot = Mock(get_attachment=AsyncMock(side_effect=[attachment("cat.mp4"), attachment()]))
-        view = MemePicker(bot, [video, image], 50)
+        view = MemePicker(bot, [video, image], 50, options=config.bot)
         request = interaction()
         await view.show_preview(request)
         assert len(request.edit_original_response.call_args.kwargs["attachments"]) == 1
@@ -105,11 +110,13 @@ def test_switching_from_video_to_image_removes_previous_attachment() -> None:
     asyncio.run(run())
 
 
-def test_oversize_video_has_source_link_without_download() -> None:
+def test_oversize_video_has_source_link_without_download(config: RuntimeConfig) -> None:
     async def run() -> None:
         original = attachment("cat.mp4", size=1001)
         video = meme("video", "cat.mp4")
-        view = MemePicker(Mock(get_attachment=AsyncMock(return_value=original)), [video], 50)
+        view = MemePicker(
+            Mock(get_attachment=AsyncMock(return_value=original)), [video], 50, options=config.bot
+        )
         embed, files = await view.preview(1000)
         assert files == []
         assert video.jump_url in embed.description
@@ -119,9 +126,11 @@ def test_oversize_video_has_source_link_without_download() -> None:
     asyncio.run(run())
 
 
-def test_deleted_media_clears_old_preview() -> None:
+def test_deleted_media_clears_old_preview(config: RuntimeConfig) -> None:
     async def run() -> None:
-        view = MemePicker(Mock(get_attachment=AsyncMock(return_value=None)), [meme()], 50)
+        view = MemePicker(
+            Mock(get_attachment=AsyncMock(return_value=None)), [meme()], 50, options=config.bot
+        )
         request = interaction()
         await view.show_preview(request)
         payload = request.edit_original_response.call_args.kwargs
@@ -132,14 +141,16 @@ def test_deleted_media_clears_old_preview() -> None:
     asyncio.run(run())
 
 
-def test_failed_video_download_falls_back_to_source_link() -> None:
+def test_failed_video_download_falls_back_to_source_link(config: RuntimeConfig) -> None:
     async def run() -> None:
         original = attachment("cat.mp4")
         original.to_file.side_effect = discord.NotFound(
             SimpleNamespace(status=404, reason="Not Found"), "Missing attachment"
         )
         video = meme("video", "cat.mp4")
-        view = MemePicker(Mock(get_attachment=AsyncMock(return_value=original)), [video], 50)
+        view = MemePicker(
+            Mock(get_attachment=AsyncMock(return_value=original)), [video], 50, options=config.bot
+        )
         embed, files = await view.preview(1000)
         assert files == []
         assert embed.fields[0].name == "Không tải được video"
@@ -148,11 +159,14 @@ def test_failed_video_download_falls_back_to_source_link() -> None:
     asyncio.run(run())
 
 
-def test_failed_preview_upload_clears_media_and_closes_file() -> None:
+def test_failed_preview_upload_clears_media_and_closes_file(config: RuntimeConfig) -> None:
     async def run() -> None:
         original = attachment("cat.mp4")
         view = MemePicker(
-            Mock(get_attachment=AsyncMock(return_value=original)), [meme("video", "cat.mp4")], 50
+            Mock(get_attachment=AsyncMock(return_value=original)),
+            [meme("video", "cat.mp4")],
+            50,
+            options=config.bot,
         )
         request = interaction()
         request.edit_original_response.side_effect = [
@@ -169,11 +183,11 @@ def test_failed_preview_upload_clears_media_and_closes_file() -> None:
     asyncio.run(run())
 
 
-def test_next_previous_and_requester_authorization() -> None:
+def test_next_previous_and_requester_authorization(config: RuntimeConfig) -> None:
     async def run() -> None:
         originals = [replace(meme(), id=index) for index in range(1, 7)]
         bot = Mock(get_attachment=AsyncMock(return_value=attachment()))
-        view = MemePicker(bot, originals, 50)
+        view = MemePicker(bot, originals, 50, options=config.bot)
         request = interaction()
         assert await view.interaction_check(request)
         request.user.id = 99
@@ -190,11 +204,14 @@ def test_next_previous_and_requester_authorization() -> None:
     asyncio.run(run())
 
 
-def test_effective_interaction_limit_is_used_for_video_preview() -> None:
+def test_effective_interaction_limit_is_used_for_video_preview(config: RuntimeConfig) -> None:
     async def run() -> None:
         original = attachment("cat.mp4", size=100)
         view = MemePicker(
-            Mock(get_attachment=AsyncMock(return_value=original)), [meme("video", "cat.mp4")], 50
+            Mock(get_attachment=AsyncMock(return_value=original)),
+            [meme("video", "cat.mp4")],
+            50,
+            options=config.bot,
         )
         request = interaction()
         request.filesize_limit = 50
@@ -205,7 +222,7 @@ def test_effective_interaction_limit_is_used_for_video_preview() -> None:
     asyncio.run(run())
 
 
-def test_slow_video_preview_cannot_overwrite_newer_image_selection() -> None:
+def test_slow_video_preview_cannot_overwrite_newer_image_selection(config: RuntimeConfig) -> None:
     async def run() -> None:
         video = meme("video", "cat.mp4")
         image = replace(meme(), id=2)
@@ -220,7 +237,10 @@ def test_slow_video_preview_cannot_overwrite_newer_image_selection() -> None:
             return attachment()
 
         view = MemePicker(
-            Mock(get_attachment=AsyncMock(side_effect=get_attachment)), [video, image], 50
+            Mock(get_attachment=AsyncMock(side_effect=get_attachment)),
+            [video, image],
+            50,
+            options=config.bot,
         )
         request = interaction()
         slow = asyncio.create_task(view.show_preview(request))

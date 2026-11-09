@@ -3,12 +3,11 @@
 from collections.abc import Iterator
 from typing import Any
 
-from meme_manager.domain.media import media_kind
+from meme_manager.domain.media import MediaPolicy, media_kind
 from meme_manager.domain.models import Meme, MemeInput
+from meme_manager.domain.options import SearchOptions
 from meme_manager.domain.text import default_title, normalize
 from meme_manager.persistence.database import SQLiteDatabase
-
-SEARCH_BATCH_SIZE = 200
 
 _COLUMNS = (
     "id, guild_id, channel_id, message_id, attachment_id, author_id, "
@@ -17,16 +16,19 @@ _COLUMNS = (
 
 
 class MemeCatalog:
-    def __init__(self, database: SQLiteDatabase) -> None:
+    def __init__(self, database: SQLiteDatabase, media: MediaPolicy, search: SearchOptions) -> None:
         self.database = database
+        self.media = media
+        self.options = database.options
+        self.search_options = search
 
     def add(self, item: MemeInput) -> bool:
         """Index media or refresh its channel name, preserving edited titles and tags."""
-        kind = media_kind(item.filename, item.content_type)
+        kind = media_kind(item.filename, item.content_type, self.media)
         if kind is None:
             return False
         title = default_title(item.filename)
-        message_text = item.message_text[:1000]
+        message_text = item.message_text[: self.options.caption_length]
         search_text = normalize(f"{title} {message_text} {item.channel_name}")
         with self.database.connection() as connection:
             cursor = connection.execute(
@@ -76,10 +78,16 @@ class MemeCatalog:
         return cursor.rowcount > 0
 
     def search(
-        self, guild_id: int, query: str = "", limit: int = 100, *, channel_id: int | None = None
+        self,
+        guild_id: int,
+        query: str = "",
+        limit: int | None = None,
+        *,
+        channel_id: int | None = None,
+        extensions: tuple[str, ...] | None = None,
     ) -> list[Meme]:
         """Match each search word; LIKE wildcards in user input are escaped."""
-        words = normalize(query).split()[:12]
+        words = normalize(query).split()[: self.search_options.max_query_words]
         if query.strip() and not words:
             return []
         filters = ["guild_id = ?"]
@@ -87,6 +95,7 @@ class MemeCatalog:
         if channel_id is not None:
             filters.append("channel_id = ?")
             parameters.append(channel_id)
+        _filter_extensions(filters, parameters, extensions)
         for word in words:
             filters.append("search_text LIKE ? ESCAPE '\\'")
             escaped_word = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -94,24 +103,34 @@ class MemeCatalog:
         statement = (
             f"SELECT {_COLUMNS} FROM memes WHERE {' AND '.join(filters)} ORDER BY id DESC LIMIT ?"
         )
-        parameters.append(min(max(limit, 1), 100))
+        parameters.append(
+            min(
+                max(self.search_options.max_results if limit is None else limit, 1),
+                self.search_options.max_results,
+            )
+        )
         with self.database.connection() as connection:
             rows = connection.execute(statement, parameters).fetchall()
         return [_as_meme(row) for row in rows]
 
     def iter_search_candidates(
-        self, guild_id: int, *, channel_id: int | None = None
+        self,
+        guild_id: int,
+        *,
+        channel_id: int | None = None,
+        extensions: tuple[str, ...] | None = None,
     ) -> Iterator[Meme]:
         """Stream every scoped candidate so ranking never truncates to recent uploads."""
-        statement = f"SELECT {_COLUMNS} FROM memes WHERE guild_id = ?"
-        parameters = [guild_id]
+        filters = ["guild_id = ?"]
+        parameters: list[str | int] = [guild_id]
         if channel_id is not None:
-            statement += " AND channel_id = ?"
+            filters.append("channel_id = ?")
             parameters.append(channel_id)
-        statement += " ORDER BY id DESC"
+        _filter_extensions(filters, parameters, extensions)
+        statement = f"SELECT {_COLUMNS} FROM memes WHERE {' AND '.join(filters)} ORDER BY id DESC"
         with self.database.connection() as connection:
             cursor = connection.execute(statement, parameters)
-            while rows := cursor.fetchmany(SEARCH_BATCH_SIZE):
+            while rows := cursor.fetchmany(self.options.search_batch_size):
                 for row in rows:
                     yield _as_meme(row)
 
@@ -136,8 +155,8 @@ class MemeCatalog:
         existing = self.get(meme_id, guild_id)
         if existing is None:
             return False
-        clean_title = title.strip()[:120]
-        clean_tags = tags.strip()[:300]
+        clean_title = title.strip()[: self.options.title_length]
+        clean_tags = tags.strip()[: self.options.tags_length]
         if not clean_title:
             raise ValueError("Meme title cannot be empty")
         with self.database.connection() as connection:
@@ -166,6 +185,18 @@ class MemeCatalog:
                 (guild_id, channel_id, message_id),
             )
         return cursor.rowcount
+
+
+def _filter_extensions(
+    filters: list[str], parameters: list[str | int], extensions: tuple[str, ...] | None
+) -> None:
+    if extensions is None:
+        return
+    if not extensions:
+        filters.append("0 = 1")
+        return
+    filters.append("(" + " OR ".join("lower(filename) LIKE ?" for _ in extensions) + ")")
+    parameters.extend(f"%.{extension}" for extension in extensions)
 
 
 def _as_meme(row: tuple[Any, ...]) -> Meme:

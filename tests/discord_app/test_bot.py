@@ -2,13 +2,14 @@
 
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import discord
 import pytest
 
-from meme_manager.config import Settings
+from meme_manager.config import RuntimeConfig, Settings
 from meme_manager.discord_app.bot import MemeBot
 from meme_manager.persistence.catalog import MemeCatalog
 from meme_manager.persistence.channels import ChannelRegistry
@@ -17,10 +18,15 @@ from meme_manager.services.search import MemeSearchService
 
 
 @pytest.fixture
-def bot(database: SQLiteDatabase, catalog: MemeCatalog, channels: ChannelRegistry) -> MemeBot:
+def bot(
+    database: SQLiteDatabase, catalog: MemeCatalog, channels: ChannelRegistry, config: RuntimeConfig
+) -> MemeBot:
     channels.set_meme_category_id(1, 20)
     return MemeBot(
-        Settings("test-token", 1, database.path), catalog, channels, MemeSearchService(catalog)
+        Settings("test-token", 1, database.path, config=config),
+        catalog,
+        channels,
+        MemeSearchService(catalog, options=config.search),
     )
 
 
@@ -165,10 +171,12 @@ def test_import_empty_category(bot: MemeBot) -> None:
     assert "/meme category create" in request.followup.send.call_args.args[0]
 
 
-def test_no_indexing_until_meme_group_is_registered(bot: MemeBot) -> None:
-    database = SQLiteDatabase(bot.settings.database_path.parent / "empty.sqlite3")
+def test_no_indexing_until_meme_group_is_registered(bot: MemeBot, config: RuntimeConfig) -> None:
+    database = SQLiteDatabase(
+        bot.settings.database_path.parent / "empty.sqlite3", options=config.database
+    )
     database.initialize()
-    bot.catalog = MemeCatalog(database)
+    bot.catalog = MemeCatalog(database, media=config.media, search=config.search)
     bot.channels = ChannelRegistry(database)
     assert bot.index_message(message(channel(category_id=None))) == 0
     assert bot.index_message(message(channel())) == 0
@@ -186,3 +194,15 @@ def test_search_uses_fuzzy_service_and_list_keeps_category_filter(bot: MemeBot) 
         assert [m.channel_id for m in picker.call_args.args[2]] == [5]
         asyncio.run(group.get_command("list").callback(request, channel(2)))
         assert [m.channel_id for m in picker.call_args.args[2]] == [2]
+
+
+def test_gateway_skips_disabled_format(bot: MemeBot) -> None:
+    bot.catalog.media = replace(
+        bot.settings.config.media,
+        types=tuple(
+            replace(t, enabled=False) if t.name == "gif" else t
+            for t in bot.settings.config.media.types
+        ),
+    )
+    assert bot.index_message(message(channel())) == 0
+    assert bot.catalog.search(1) == []

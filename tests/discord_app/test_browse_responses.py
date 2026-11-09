@@ -72,9 +72,42 @@ def test_populated_results_do_not_acknowledge_twice(bot: MemeBot, command_name: 
                 await command.callback(request, "cat")
             else:
                 await command.callback(request)
-            picker.assert_called_once_with(bot.media, matches, request.user.id)
+            picker.assert_called_once_with(
+                bot.media, matches, request.user.id, options=bot.settings.config.bot
+            )
             picker.return_value.show_preview.assert_awaited_once_with(request)
         request.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
         request.response.send_message.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("command_name", ["search", "list"])
+@pytest.mark.parametrize("file_type", [None, "jpg", "video"])
+def test_browse_file_filter_is_passed_with_category(
+    bot: MemeBot, command_name: str, file_type: str | None
+) -> None:
+    async def run() -> None:
+        request = interaction()
+        query = Mock(return_value=[])
+        if command_name == "search":
+            bot.search_service.search = query
+        else:
+            bot.catalog.search = query
+        command = bot.tree.get_command("meme", guild=bot.guild).get_command(command_name)
+        selected_category = SimpleNamespace(id=123)
+        if command_name == "search":
+            await command.callback(request, "votay", selected_category, file_type)
+        else:
+            await command.callback(request, selected_category, file_type)
+        assert query.call_args.kwargs == {
+            "channel_id": 123,
+            "extensions": bot.settings.config.media.extensions_for(file_type),
+        }
+        option = next(p for p in command.parameters if p.name == "file_type")
+        assert [c.value for c in option.choices] == [
+            t.name for t in bot.settings.config.media.types
+        ]
+        assert not option.required
 
     asyncio.run(run())

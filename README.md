@@ -15,14 +15,26 @@ Upload images, GIFs, or short videos to text channels in one Discord category; t
 | Command | Purpose |
 | --- | --- |
 | `/meme category create name:...` | Create or open a meme channel under Memes (Manage Server required) |
-| `/meme search query:... category:...` | Search names, captions, tags, and channel names with accent-insensitive ranking and typo tolerance; optionally filter by category channel |
-| `/meme list category:...` | Browse recently indexed memes; optionally select a category channel (first 100 results) |
+| `/meme search query:... category:... file_type:...` | Search names, captions, tags, and channel names with accent-insensitive ranking and typo tolerance; optionally filter by category channel and file type |
+| `/meme list category:... file_type:...` | Browse recently indexed memes; optionally select a category channel and file type (default limit: 100) |
 | `/meme random` | Send a random indexed meme |
 | `/meme edit meme_id:... title:... tags:...` | Rename or tag a meme (uploader or server manager) |
 | `/meme remove meme_id:...` | Unindex a meme, **without deleting the original upload** |
 | `/meme import limit:...` | Backfill up to `limit` messages per text channel in the meme category (server manager) |
 
 Supports `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.mp4`, `.webm`, `.mov`; actual playback and upload limits depend on Discord and client support. Search uses Vietnamese text normalization and RapidFuzz: exact names rank first, followed by name keywords, metadata keywords and near matches. No OCR or semantic search is implemented.
+
+## Configuration
+
+Operational settings live in `config/bot.yaml`, `database.yaml`, `search.yaml` and
+`media.yaml`. `ConfigService.load("search")` reads a YAML file by name; startup validates
+and injects typed options. Token/server identity remain environment-backed.
+See [configuration reference](docs/configuration.md) for all options and directory overrides.
+
+Set a media group's `enabled: false` to skip new uploads/import indexing for that format.
+Use `/meme search query:votay file_type:video` or `/meme list file_type:gif` to filter
+existing memes. JPG includes JPEG. Omit the filter to search all indexed formats.
+Restart the bot after YAML changes; it synchronizes the updated command choices.
 
 ## Start the bot
 
@@ -72,7 +84,7 @@ python -m meme_manager.import_folder "/path/to/memes"
 meme-import "/path/to/memes" --category reaction
 ```
 
-`--dry-run` reads files and computes SHA-256 fingerprints without loading credentials,
+`--dry-run` reads files and computes SHA-256 fingerprints without requiring valid credentials,
 connecting to Discord or creating/writing a database. It prints planned categories and sizes.
 It does not validate Discord permissions or server upload limits. After updating the package,
 use `python -m pip install -e .` to install the `meme-import` alias.
@@ -116,7 +128,7 @@ Unicode and filename separators such as underscores are supported. Joined typos 
 `votya` can find `vỗ tay`. Every query word must
 have a literal or sufficiently similar counterpart; unrelated words are not ignored. Queries
 shorter than four non-space characters use literal matches only. Empty/punctuation-only queries
-return no results. Up to 12 query words and 100 results are supported.
+return no results. The default limits are 12 query words and 100 results; tune them in `config/search.yaml`.
 
 See [search research and evaluation](docs/search-research.md) for library choices, measured
 results and limits. Search keys are cached per text; search results are always fresh.

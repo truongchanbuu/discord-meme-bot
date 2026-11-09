@@ -10,11 +10,21 @@ class MemeRepository(Protocol):
     def add(self, item: MemeInput) -> bool: ...
 
     def search(
-        self, guild_id: int, query: str = "", limit: int = 100, *, channel_id: int | None = None
+        self,
+        guild_id: int,
+        query: str = "",
+        limit: int | None = None,
+        *,
+        channel_id: int | None = None,
+        extensions: tuple[str, ...] | None = None,
     ) -> list[Meme]: ...
 
     def iter_search_candidates(
-        self, guild_id: int, *, channel_id: int | None = None
+        self,
+        guild_id: int,
+        *,
+        channel_id: int | None = None,
+        extensions: tuple[str, ...] | None = None,
     ) -> Iterator[Meme]: ...
 
     def random(self, guild_id: int) -> Meme | None: ...

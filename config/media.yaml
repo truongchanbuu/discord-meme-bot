@@ -1,0 +1,23 @@
+# enabled controls new indexing/imports; existing records stay searchable.
+default_category: general
+types:
+  png:
+    kind: image
+    extensions: [png]
+    enabled: true
+  jpg:
+    kind: image
+    extensions: [jpg, jpeg]
+    enabled: true
+  webp:
+    kind: image
+    extensions: [webp]
+    enabled: true
+  gif:
+    kind: image
+    extensions: [gif]
+    enabled: true
+  video:
+    kind: video
+    extensions: [mp4, webm, mov]
+    enabled: true

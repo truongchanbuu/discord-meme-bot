@@ -8,8 +8,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import discord
+from dotenv import load_dotenv
 
-from meme_manager.config import Settings
+from meme_manager.config import RuntimeConfig, Settings
 from meme_manager.discord_app.categories import CategoryManager
 from meme_manager.discord_app.folder_upload import DiscordFolderUploader
 from meme_manager.persistence.catalog import MemeCatalog
@@ -24,16 +25,23 @@ def report(message: str) -> None:
 
 
 async def upload_plan(settings: Settings, plan: FolderPlan) -> int:
-    database = SQLiteDatabase(settings.database_path)
+    database = SQLiteDatabase(settings.database_path, settings.config.database)
     database.initialize()
     async with discord.Client(intents=discord.Intents.none()) as client:
         # Login supplies REST access only: do not sync commands or connect another gateway.
         await client.login(settings.token)
         guild = await client.fetch_guild(settings.guild_id)
-        categories = CategoryManager(settings.guild_id, ChannelRegistry(database))
+        categories = CategoryManager(
+            settings.guild_id, ChannelRegistry(database), settings.config.bot
+        )
         uploader = DiscordFolderUploader(client, guild, categories)
         service = FolderImportService(
-            settings.guild_id, MemeCatalog(database), FolderImportStore(database), uploader, report
+            settings.guild_id,
+            MemeCatalog(database, settings.config.media, settings.config.search),
+            FolderImportStore(database),
+            uploader,
+            report,
+            settings.config.media,
         )
         summary = await service.run(plan.files)
     report(
@@ -54,7 +62,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        plan = scan_folder(args.folder, args.category)
+        load_dotenv()
+        config = RuntimeConfig.load()
+        plan = scan_folder(args.folder, args.category, media=config.media)
     except (OSError, ValueError) as error:
         print(f"ERROR {error}", file=sys.stderr)
         return 2
@@ -70,7 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not plan.files:
         return 1 if plan.errors else 0
     try:
-        return asyncio.run(upload_plan(Settings.from_environment(), plan))
+        return asyncio.run(upload_plan(Settings.from_environment(config), plan))
     except (OSError, ValueError, sqlite3.Error) as error:
         print(f"ERROR {error}", file=sys.stderr)
         return 1

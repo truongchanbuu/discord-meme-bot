@@ -8,12 +8,10 @@ from typing import TYPE_CHECKING
 import discord
 
 from meme_manager.domain.models import Meme
+from meme_manager.domain.options import BotOptions
 
 if TYPE_CHECKING:
     from meme_manager.discord_app.media import MemeMedia
-
-PAGE_SIZE = 5
-DEFAULT_PREVIEW_LIMIT = 10 * 1024 * 1024
 
 
 class MemeOption(discord.ui.Select["MemePicker"]):
@@ -41,8 +39,11 @@ class MemeOption(discord.ui.Select["MemePicker"]):
 class MemePicker(discord.ui.View):
     """Discord-native picker: select, previous/next and send to current channel."""
 
-    def __init__(self, media: MemeMedia, memes: list[Meme], requester_id: int) -> None:
-        super().__init__(timeout=180)
+    def __init__(
+        self, media: MemeMedia, memes: list[Meme], requester_id: int, options: BotOptions
+    ) -> None:
+        super().__init__(timeout=options.picker_timeout)
+        self.options = options
         self.media = media
         self.memes = memes
         self.requester_id = requester_id
@@ -59,11 +60,11 @@ class MemePicker(discord.ui.View):
 
     def refresh_controls(self) -> None:
         self.clear_items()
-        start = self.page * PAGE_SIZE
-        current = self.memes[start : start + PAGE_SIZE]
+        start = self.page * self.options.page_size
+        current = self.memes[start : start + self.options.page_size]
         self.add_item(MemeOption(current, self.selected_id))
         self.previous_page.disabled = self.page == 0
-        self.next_page.disabled = (start + PAGE_SIZE) >= len(self.memes)
+        self.next_page.disabled = (start + self.options.page_size) >= len(self.memes)
         self.add_item(self.previous_page)
         self.add_item(self.next_page)
         self.add_item(self.post_to_channel)
@@ -71,7 +72,9 @@ class MemePicker(discord.ui.View):
     async def show_preview(self, interaction: discord.Interaction) -> None:
         async with self._preview_lock:
             upload_limit = (
-                interaction.guild.filesize_limit if interaction.guild else DEFAULT_PREVIEW_LIMIT
+                interaction.guild.filesize_limit
+                if interaction.guild
+                else self.options.preview_limit_bytes
             )
             upload_limit = getattr(interaction, "filesize_limit", upload_limit)
             embed, files = await self.preview(upload_limit)
@@ -98,7 +101,9 @@ class MemePicker(discord.ui.View):
                 f"[Mở file gốc trong Discord]({meme.jump_url})"
             ),
         )
-        embed.set_footer(text=f"Trang {self.page + 1}/{(len(self.memes) - 1) // PAGE_SIZE + 1}")
+        embed.set_footer(
+            text=f"Trang {self.page + 1}/{(len(self.memes) - 1) // self.options.page_size + 1}"
+        )
         attachment = await self.media.get_attachment(meme)
         if attachment is None:
             embed.add_field(name="Lưu ý", value="File gốc đã mất hoặc bot thiếu quyền đọc.")
@@ -127,7 +132,7 @@ class MemePicker(discord.ui.View):
         self, interaction: discord.Interaction, _: discord.ui.Button[MemePicker]
     ) -> None:
         self.page -= 1
-        self.selected_id = self.memes[self.page * PAGE_SIZE].id
+        self.selected_id = self.memes[self.page * self.options.page_size].id
         self.refresh_controls()
         await interaction.response.defer()
         await self.show_preview(interaction)
@@ -137,7 +142,7 @@ class MemePicker(discord.ui.View):
         self, interaction: discord.Interaction, _: discord.ui.Button[MemePicker]
     ) -> None:
         self.page += 1
-        self.selected_id = self.memes[self.page * PAGE_SIZE].id
+        self.selected_id = self.memes[self.page * self.options.page_size].id
         self.refresh_controls()
         await interaction.response.defer()
         await self.show_preview(interaction)

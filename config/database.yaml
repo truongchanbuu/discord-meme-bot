@@ -1,0 +1,7 @@
+path: data/memes.sqlite3
+path_env: MEME_DB_PATH
+timeout_seconds: 10
+search_batch_size: 200
+title_length: 120
+tags_length: 300
+caption_length: 1000

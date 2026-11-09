@@ -3,7 +3,6 @@
 import re
 import unicodedata
 from dataclasses import dataclass
-from functools import lru_cache
 
 
 def normalize(text: str) -> str:
@@ -34,9 +33,8 @@ class SearchKeys:
     folded: str
 
 
-@lru_cache(maxsize=16_384)
 def search_keys(text: str) -> SearchKeys:
-    """Cache both search forms per text, without changing display or persisted legacy keys."""
+    """Build both search forms per text, without changing display or persisted legacy keys."""
     visible = "".join(char for char in text if unicodedata.category(char) != "Cf")
     canonical = unicodedata.normalize("NFKC", visible)
     canonical = unicodedata.normalize("NFKC", canonical.casefold())

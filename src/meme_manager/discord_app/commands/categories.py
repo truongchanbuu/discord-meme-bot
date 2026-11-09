@@ -52,8 +52,12 @@ def register_category_commands(group: app_commands.Group, bot: MemeBot) -> None:
         )
 
     @group.command(name="import", description="Nhập meme từ các kênh trong category")
-    @app_commands.describe(limit="Số tin nhắn gần nhất mỗi kênh, tối đa 1000")
-    async def import_history(interaction: discord.Interaction, limit: int = 200) -> None:
+    @app_commands.describe(
+        limit=f"Số tin nhắn gần nhất mỗi kênh, tối đa {bot.settings.config.bot.history_max}"
+    )
+    async def import_history(
+        interaction: discord.Interaction, limit: int = bot.settings.config.bot.history_default
+    ) -> None:
         if not is_manager(interaction):
             await interaction.response.send_message("Cần quyền Manage Server.", ephemeral=True)
             return
@@ -76,7 +80,7 @@ def register_category_commands(group: app_commands.Group, bot: MemeBot) -> None:
         except discord.HTTPException:
             LOG.exception("Failed fetching meme category")
             await interaction.followup.send(
-                "Không chuẩn bị được nhóm Memes. Kiểm tra quyền Manage Channels và View Channel.",
+                "Không chuẩn bị được nhóm thư viện meme. Kiểm tra quyền Manage Channels và View Channel.",
                 ephemeral=True,
             )
             return
@@ -90,7 +94,9 @@ def register_category_commands(group: app_commands.Group, bot: MemeBot) -> None:
         skipped = 0
         for channel in channels:
             try:
-                async for message in channel.history(limit=min(max(limit, 1), 1000)):
+                async for message in channel.history(
+                    limit=min(max(limit, 1), bot.settings.config.bot.history_max)
+                ):
                     added += bot.index_message(message)
             except discord.HTTPException:
                 skipped += 1

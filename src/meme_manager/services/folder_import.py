@@ -7,7 +7,7 @@ from os import walk
 from pathlib import Path
 from typing import Protocol
 
-from meme_manager.domain.media import media_kind
+from meme_manager.domain.media import MediaPolicy, media_kind
 from meme_manager.domain.models import ImportedFile, LocalMeme, Meme, MemeInput
 from meme_manager.domain.repositories import FolderImportRepository, MemeRepository
 from meme_manager.domain.text import meme_channel_name
@@ -40,7 +40,7 @@ class ImportSummary:
     failed: int = 0
 
 
-def scan_folder(folder: Path, category: str | None = None) -> FolderPlan:
+def scan_folder(folder: Path, category: str | None = None, *, media: MediaPolicy) -> FolderPlan:
     folder = folder.expanduser().resolve()
     if not folder.is_dir():
         raise ValueError(f"Không tìm thấy folder: {folder}")
@@ -58,16 +58,16 @@ def scan_folder(folder: Path, category: str | None = None) -> FolderPlan:
             continue
         if not path.is_file():
             continue
-        if media_kind(path.name, None) is None:
+        if media_kind(path.name, None, media) is None:
             plan.skipped += 1
             continue
         relative = path.relative_to(folder)
         try:
             name = override or meme_channel_name(
-                relative.parts[0] if len(relative.parts) > 1 else "general"
+                relative.parts[0] if len(relative.parts) > 1 else media.default_category
             )
-            with path.open("rb") as media:
-                digest = file_digest(media, "sha256").hexdigest()
+            with path.open("rb") as source:
+                digest = file_digest(source, "sha256").hexdigest()
             size = path.stat().st_size
         except (OSError, ValueError) as error:
             plan.errors.append(f"{relative}: {error}")
@@ -89,8 +89,10 @@ class FolderImportService:
         imports: FolderImportRepository,
         uploader: FolderUploader,
         report: Callable[[str], None],
+        media: MediaPolicy,
     ) -> None:
         self.guild_id = guild_id
+        self.media = media
         self.catalog = catalog
         self.imports = imports
         self.uploader = uploader
@@ -152,6 +154,6 @@ class FolderImportService:
 
     def _index(self, record: MemeInput) -> bool:
         # add() also returns False for duplicates; unsupported remote MIME must report failure.
-        if media_kind(record.filename, record.content_type) is None:
+        if media_kind(record.filename, record.content_type, self.media) is None:
             raise UploadError("Discord trả về file không thuộc định dạng ảnh/video được hỗ trợ")
         return self.catalog.add(record)

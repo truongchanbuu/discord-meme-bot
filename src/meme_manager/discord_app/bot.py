@@ -31,7 +31,7 @@ class MemeBot(discord.Client):
         self.catalog = catalog
         self.search_service = search_service
         self.channels = channels
-        self.categories = CategoryManager(settings.guild_id, channels)
+        self.categories = CategoryManager(settings.guild_id, channels, settings.config.bot)
         self.media = MemeMedia(self)
         self.tree = app_commands.CommandTree(self)
         self.guild = discord.Object(id=settings.guild_id)
@@ -51,7 +51,7 @@ class MemeBot(discord.Client):
             await self.categories.ensure_group(guild)
         except (discord.HTTPException, ValueError):
             LOG.exception(
-                "Could not prepare Memes category; check Manage Channels and View Channel"
+                "Could not prepare meme library category; check Manage Channels and View Channel"
             )
 
     async def on_message(self, message: discord.Message) -> None:

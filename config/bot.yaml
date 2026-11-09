@@ -1,0 +1,12 @@
+# Secrets remain in the named environment variables (.env is supported).
+token_env: DISCORD_BOT_TOKEN
+guild_id_env: DISCORD_GUILD_ID
+category_name: Memes
+history_default: 200
+history_max: 1000
+page_size: 5
+picker_timeout: 180
+preview_limit_bytes: 10485760
+log_level: INFO
+
+log_format: "%(levelname)s %(name)s: %(message)s"

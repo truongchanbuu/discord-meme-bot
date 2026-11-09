@@ -2,16 +2,18 @@
 
 import asyncio
 from pathlib import Path
+from shutil import copytree
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import yaml
 
-from meme_manager.config import Settings
+from meme_manager.config import RuntimeConfig, Settings
 from meme_manager.import_folder import main, upload_plan
 from meme_manager.services.folder_import import FolderPlan, ImportSummary
 
 
-def test_dry_run_does_not_load_config_connect_or_write(
+def test_dry_run_does_not_load_credentials_connect_or_write(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     (tmp_path / "cat.gif").write_bytes(b"image")
@@ -37,10 +39,8 @@ def test_missing_folder_exits_nonzero(tmp_path: Path) -> None:
     assert main([str(tmp_path / "missing"), "--dry-run"]) == 2
 
 
-def test_upload_client_logs_in_without_gateway(
-    tmp_path: Path,
-) -> None:
-    settings = Settings("test-token", 1, tmp_path / "catalog.sqlite3")
+def test_upload_client_logs_in_without_gateway(tmp_path: Path, config: RuntimeConfig) -> None:
+    settings = Settings("test-token", 1, tmp_path / "catalog.sqlite3", config=config)
     client = AsyncMock()
     client.__aenter__.return_value = client
     with (
@@ -56,3 +56,25 @@ def test_upload_client_logs_in_without_gateway(
     client.connect.assert_not_awaited()
     client.start.assert_not_awaited()
     client.run.assert_not_called()
+
+
+def test_dry_run_uses_media_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    directory = tmp_path / "config"
+    copytree(Path("config"), directory)
+    source = directory / "media.yaml"
+    values = yaml.safe_load(source.read_text())
+    values["types"]["gif"]["enabled"] = False
+    source.write_text(yaml.safe_dump(values))
+    monkeypatch.setenv("MEME_CONFIG_DIR", str(directory))
+    media = tmp_path / "memes"
+    media.mkdir()
+    (media / "cat.gif").write_bytes(b"gif")
+    (media / "cat.png").write_bytes(b"png")
+    with patch("meme_manager.import_folder.discord.Client") as client:
+        assert main([str(media), "--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert "cat.png" in output
+    assert "cat.gif" not in output
+    client.assert_not_called()

@@ -7,9 +7,10 @@ private previews, selects and buttons.
 ```text
 src/meme_manager/
 ├── app.py                      # Startup and production dependency wiring
-├── config.py                   # Environment validation
+├── config.py                   # Typed YAML validation and environment-backed credentials
 ├── import_folder.py            # CLI composition and dry-run entrypoint
 ├── domain/
+│   ├── options.py              # Typed runtime options without I/O
 │   ├── models.py               # Plain meme input/result records
 │   ├── text.py                 # Name normalization and search text rules
 │   ├── media.py                # Supported media validation
@@ -21,6 +22,7 @@ src/meme_manager/
 │   ├── channels.py             # Managed group/channel mappings
 │   └── imports.py              # Folder upload checkpoints
 ├── services/
+│   ├── config.py                # Named YAML mapping loader
 │   ├── search.py                # Exact/keyword/fuzzy relevance ranking
 │   └── folder_import.py         # Local scan, deduplication, resume and indexing
 └── discord_app/
@@ -138,3 +140,12 @@ an archival guarantee: retain backups of important files and the metadata databa
 Folder imports use SHA-256 for exact-byte deduplication. No perceptual image matching, OCR,
 transcoding or semantic search is implemented. Multiple servers would require
 a separate product decision and authorization review.
+
+## Runtime configuration
+
+The composition roots load `config/*.yaml` through `ConfigService` and validate typed
+options before creating adapters. Pure media rules receive a shared `MediaPolicy` so folder
+scanning and gateway ingestion agree. Search/list resolve a file-type group to extensions
+and filter scoped SQLite candidates before ranking. Disabling ingest does not hide existing
+records. See [configuration reference](configuration.md). Fixed Discord API limits remain
+validation constraints, separate from operational tuning.

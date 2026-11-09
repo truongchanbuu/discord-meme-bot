@@ -11,10 +11,15 @@ from meme_manager.services.search import MemeSearchService
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     settings = Settings.from_environment()
-    database = SQLiteDatabase(settings.database_path)
+    logging.basicConfig(level=settings.config.bot.log_level, format=settings.config.bot.log_format)
+    database = SQLiteDatabase(settings.database_path, settings.config.database)
     database.initialize()
-    catalog = MemeCatalog(database)
-    bot = MemeBot(settings, catalog, ChannelRegistry(database), MemeSearchService(catalog))
+    catalog = MemeCatalog(database, settings.config.media, settings.config.search)
+    bot = MemeBot(
+        settings,
+        catalog,
+        ChannelRegistry(database),
+        MemeSearchService(catalog, settings.config.search),
+    )
     bot.run(settings.token, log_handler=None)

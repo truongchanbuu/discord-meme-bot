@@ -1,12 +1,13 @@
+from meme_manager.config import RuntimeConfig
 from meme_manager.domain.media import media_kind
 from meme_manager.domain.text import default_title, normalize, search_keys
 
 
-def test_supported_media() -> None:
-    assert media_kind("funny.GIF", "image/gif") == "image"
-    assert media_kind("reaction.mp4", "video/mp4") == "video"
-    assert media_kind("reaction.webp", "video/mp4") is None
-    assert media_kind("secret.pdf", None) is None
+def test_supported_media(config: RuntimeConfig) -> None:
+    assert media_kind("funny.GIF", "image/gif", policy=config.media) == "image"
+    assert media_kind("reaction.mp4", "video/mp4", policy=config.media) == "video"
+    assert media_kind("reaction.webp", "video/mp4", policy=config.media) is None
+    assert media_kind("secret.pdf", None, policy=config.media) is None
 
 
 def test_normalize_vietnamese() -> None:

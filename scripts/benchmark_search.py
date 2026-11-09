@@ -6,6 +6,7 @@ from statistics import median
 from tempfile import TemporaryDirectory
 from time import perf_counter
 
+from meme_manager.config import RuntimeConfig
 from meme_manager.domain.text import normalize
 from meme_manager.persistence.catalog import MemeCatalog
 from meme_manager.persistence.database import SQLiteDatabase
@@ -50,9 +51,10 @@ def seed_database(database: SQLiteDatabase, size: int) -> None:
 
 
 def benchmark(size: int, repeats: int, path: Path) -> None:
-    database = SQLiteDatabase(path)
+    config = RuntimeConfig.load()
+    database = SQLiteDatabase(path, config.database)
     seed_database(database, size)
-    search = MemeSearchService(MemeCatalog(database))
+    search = MemeSearchService(MemeCatalog(database, config.media, config.search), config.search)
     for query in QUERIES:
         search.search(1, query, limit=5)
         durations = []

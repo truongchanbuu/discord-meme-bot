@@ -9,15 +9,16 @@ from unittest.mock import AsyncMock, Mock
 import discord
 import pytest
 
+from meme_manager.config import RuntimeConfig
 from meme_manager.discord_app.folder_upload import DiscordFolderUploader
 from meme_manager.domain.models import ImportedFile, LocalMeme, Meme
 from meme_manager.services.folder_import import UploadError, scan_folder
 
 
 @pytest.fixture
-def source(tmp_path: Path) -> LocalMeme:
+def source(tmp_path: Path, config: RuntimeConfig) -> LocalMeme:
     (tmp_path / "cat.gif").write_bytes(b"image")
-    return scan_folder(tmp_path).files[0]
+    return scan_folder(tmp_path, media=config.media).files[0]
 
 
 @pytest.fixture

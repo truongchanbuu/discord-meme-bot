@@ -1,0 +1,10 @@
+max_results: 100
+max_query_words: 12
+min_fuzzy_query_length: 4
+min_fuzzy_word_length: 3
+min_fuzzy_score: 75.0
+max_joined_words: 3
+long_word_length: 7
+short_word_edits: 1
+long_word_edits: 2
+normalization_cache_entries: 16384
