@@ -64,6 +64,8 @@ flowchart LR
   category logic receive those contracts; SQLite implementations are selected in `app.py`.
 - `MemeSearchService` depends on the meme repository contract and RapidFuzz, with no Discord
   or SQLite imports. The composition root injects it into the bot for search commands.
+  [Search research](search-research.md) documents dual Unicode keys, bounded edit matching,
+  normalization-only caching and measured quality/performance.
 - Repositories contain SQL only. They share a database object that commits successful work,
   rolls back exceptions and closes every owned connection. Schema migration has its own module.
 - `MemeBot` owns gateway behavior. `CategoryManager` owns Discord channel lifecycle; `MemeMedia`

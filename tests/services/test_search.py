@@ -186,3 +186,110 @@ def test_joined_words_preserve_guild_and_category_scope(catalog: MemeCatalog) ->
 def test_space_insensitive_matching_does_not_join_different_fields(catalog: MemeCatalog) -> None:
     add_meme(catalog, 1, "a", tags="bc", category="memes")
     assert MemeSearchService(catalog).search(1, "abc") == []
+
+
+@pytest.mark.parametrize("query, expected", [("má", "má"), ("ma", "ma"), ("mà", "mà")])
+def test_accent_exact_match_precedes_newer_folded_homographs(
+    catalog: MemeCatalog, query: str, expected: str
+) -> None:
+    for attachment_id, title in enumerate(["má", "ma", "mà"], start=1):
+        add_meme(catalog, attachment_id, title)
+    results = MemeSearchService(catalog).search(1, query)
+    assert results[0].title == expected
+    assert len(results) == 3
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "MÈO KHÓC",
+        "me\u0300o kho\u0301c",
+        "mèo_khóc",
+        "mèo-khóc",
+        "ｍèｏ khóｃ",
+        "mèo\u00a0khóc",
+        "mèo\u200bkhóc",
+        "meokhco",
+        "mèokhco",
+    ],
+)
+def test_vietnamese_unicode_and_separators(catalog: MemeCatalog, query: str) -> None:
+    expected = add_meme(catalog, 1, "Mèo khóc")
+    assert MemeSearchService(catalog).search(1, query)[0].id == expected.id
+
+
+@pytest.mark.parametrize("query", ["votya", "vỗtya", "catvotya", "cat_vỗ_tay", "vỗ—tay"])
+def test_joined_words_also_allow_transposed_characters(catalog: MemeCatalog, query: str) -> None:
+    expected = add_meme(catalog, 1, "Cat vỗ tay")
+    assert MemeSearchService(catalog).search(1, query)[0].id == expected.id
+
+
+def test_new_search_keys_do_not_require_persisted_key_migration(catalog: MemeCatalog) -> None:
+    expected = add_meme(catalog, 1, "mèo_khóc")
+    assert expected.name_index == "meo_khoc"
+    assert MemeSearchService(catalog).search(1, "mèo khóc")[0].id == expected.id
+    assert catalog.get(expected.id, 1).title == "mèo_khóc"
+
+
+def test_pure_text_cache_does_not_return_removed_or_outdated_records(catalog: MemeCatalog) -> None:
+    expected = add_meme(catalog, 1, "Cat vỗ tay")
+    service = MemeSearchService(catalog)
+    assert service.search(1, "votya")[0].id == expected.id
+    catalog.update(expected.id, 1, "Mèo ngủ", "")
+    assert service.search(1, "votya") == []
+    assert service.search(1, "mèo_ngủ")[0].id == expected.id
+    catalog.remove(expected.id, 1)
+    assert service.search(1, "mèo_ngủ") == []
+
+
+VIETNAMESE_TITLES = [
+    "Cat vỗ tay",
+    "Mèo khóc",
+    "má",
+    "ma",
+    "mà",
+    "Đất",
+    "Dat",
+    "Hòa",
+    "Hoà",
+    "Goofy Bi",
+    "xin 500 ca",
+    "Cat vô tay",
+]
+VIETNAMESE_SEARCH_CASES = [
+    ("cat vỗ tay", {"Cat vỗ tay"}),
+    ("vỗtay", {"Cat vỗ tay"}),
+    ("votay", {"Cat vỗ tay", "Cat vô tay"}),
+    ("votya", {"Cat vỗ tay", "Cat vô tay"}),
+    ("catvotya", {"Cat vỗ tay", "Cat vô tay"}),
+    ("cat_vỗ_tay", {"Cat vỗ tay"}),
+    ("cat vô tay", {"Cat vô tay"}),
+    ("mèo khóc", {"Mèo khóc"}),
+    ("meo khoc", {"Mèo khóc"}),
+    ("me\u0300o kho\u0301c", {"Mèo khóc"}),
+    ("mèo_khóc", {"Mèo khóc"}),
+    ("mèo-khóc", {"Mèo khóc"}),
+    ("meokhco", {"Mèo khóc"}),
+    ("mèokhco", {"Mèo khóc"}),
+    ("má", {"má"}),
+    ("ma", {"ma"}),
+    ("mà", {"mà"}),
+    ("đất", {"Đất"}),
+    ("dat", {"Dat"}),
+    ("hòa", {"Hòa"}),
+    ("hoà", {"Hoà"}),
+    ("goffy bi", {"Goofy Bi"}),
+    ("xin500", {"xin 500 ca"}),
+    ("xin_500_ca", {"xin 500 ca"}),
+]
+
+
+@pytest.mark.parametrize("query, expected", VIETNAMESE_SEARCH_CASES)
+def test_vietnamese_search_ranking_corpus(
+    catalog: MemeCatalog, query: str, expected: set[str]
+) -> None:
+    for attachment_id, title in enumerate(VIETNAMESE_TITLES, start=1):
+        add_meme(catalog, attachment_id, title, category="memes")
+    matches = MemeSearchService(catalog).search(1, query, limit=5)
+    assert matches
+    assert matches[0].title in expected

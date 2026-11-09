@@ -110,11 +110,16 @@ words may be typed together: `votay`, `vỗtay` and `catvotay` can find `cat vo 
 spelling still ranks ahead of space-insensitive matches; separate metadata fields are not
 concatenated to invent a joined word.
 
-Results prioritize exact names, then name keywords, then metadata keywords, then fuzzy matches.
-Within each tier, similarity is ranked first and newer uploads break ties. Every query word must
+Results prioritize exact accented spelling, then accent-folded names, name keywords, metadata
+keywords and fuzzy matches. Accent similarity helps order ties before recency. Both NFC/NFD
+Unicode and filename separators such as underscores are supported. Joined typos such as
+`votya` can find `vỗ tay`. Every query word must
 have a literal or sufficiently similar counterpart; unrelated words are not ignored. Queries
 shorter than four non-space characters use literal matches only. Empty/punctuation-only queries
 return no results. Up to 12 query words and 100 results are supported.
+
+See [search research and evaluation](docs/search-research.md) for library choices, measured
+results and limits. Search keys are cached per text; search results are always fresh.
 
 Server/category filters run in SQLite before ranking. Candidates stream in batches without a
 recent-upload cutoff, so an old meme can still be the best match. This scans the selected

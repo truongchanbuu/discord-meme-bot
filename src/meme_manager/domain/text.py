@@ -2,6 +2,8 @@
 
 import re
 import unicodedata
+from dataclasses import dataclass
+from functools import lru_cache
 
 
 def normalize(text: str) -> str:
@@ -24,3 +26,18 @@ def meme_channel_name(name: str) -> str:
     if not channel_name or len(channel_name) > 100:
         raise ValueError("Tên category phải có chữ hoặc số và dài tối đa 100 ký tự sau chuẩn hóa.")
     return channel_name
+
+
+@dataclass(frozen=True, slots=True)
+class SearchKeys:
+    accented: str
+    folded: str
+
+
+@lru_cache(maxsize=16_384)
+def search_keys(text: str) -> SearchKeys:
+    """Cache both search forms per text, without changing display or persisted legacy keys."""
+    visible = "".join(char for char in text if unicodedata.category(char) != "Cf")
+    canonical = unicodedata.normalize("NFKC", visible.casefold())
+    accented = " ".join(re.findall(r"[^\W_]+", canonical, flags=re.UNICODE))
+    return SearchKeys(accented, normalize(accented))

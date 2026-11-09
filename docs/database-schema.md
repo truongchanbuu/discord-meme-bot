@@ -51,9 +51,9 @@ this value. Reimport preserves edited names and tags.
 | `idx_meme_channels_discord (guild_id, channel_id)` | Inspect requested category names for a Discord channel |
 
 `/meme search` delegates to `services/search.py`. SQLite first filters the server and optional
-category, streaming all matching rows in batches of 200. The service reads `name_index` and
-normalizes the other fields, then ranks exact names, name keywords, metadata keywords and
-RapidFuzz matches. The result limit applies after ranking; candidates are not restricted to
+category, streaming all matching rows in batches of 200. The service derives accented/folded search keys from current display fields, then ranks
+accent-exact names, folded names, keywords and bounded RapidFuzz edit-distance matches.
+`name_index` remains the legacy folded SQL key; it is not rewritten by search. The result limit applies after ranking; candidates are not restricted to
 the latest page. The existing guild/category indexes support this candidate query.
 
 `/meme list` retains the recent-first SQLite query. The repository's literal search method
